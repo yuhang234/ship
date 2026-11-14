@@ -1,0 +1,38 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  href?: string;
+  actionLabel?: string;
+}
+
+const { title, description, href, actionLabel = '去看看' } = Astro.props;
+---
+
+<div class="flex flex-col items-center gap-2.5 rounded-lg border border-dashed border-line px-6 py-10 text-center">
+  <svg
+    class="h-6 w-6 text-muted"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linecap="round"
+    aria-hidden="true"
+  >
+    <path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z" stroke-dasharray="3 2.4"></path>
+    <path d="M8 10h8M8 14h5"></path>
+  </svg>
+
+  <p class="text-[15px] font-medium text-ink">{title}</p>
+  {description && <p class="max-w-[26rem] text-[13.5px] leading-relaxed text-muted">{description}</p>}
+  {
+    href && (
+      <a
+        href={href}
+        class="mt-1 text-[13.5px] text-accent underline decoration-line underline-offset-4 transition-colors hover:decoration-accent"
+      >
+        {actionLabel}
+      </a>
+    )
+  }
+</div>

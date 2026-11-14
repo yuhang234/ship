@@ -1,0 +1,106 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import { monthKey, monthLabel, yearKey } from '../../lib/date';
+import { url } from '../../lib/site';
+
+const thoughts = await getCollection('thoughts');
+const posts = await getCollection('writing', ({ data }) => data.published);
+
+interface Bucket {
+  thoughts: number;
+  posts: number;
+  months: Map<string, { thoughts: number; posts: number }>;
+}
+
+const years = new Map<string, Bucket>();
+
+const bucketFor = (year: string): Bucket => {
+  const existing = years.get(year);
+  if (existing) return existing;
+  const created: Bucket = { thoughts: 0, posts: 0, months: new Map() };
+  years.set(year, created);
+  return created;
+};
+
+const monthFor = (bucket: Bucket, month: string) => {
+  const existing = bucket.months.get(month);
+  if (existing) return existing;
+  const created = { thoughts: 0, posts: 0 };
+  bucket.months.set(month, created);
+  return created;
+};
+
+for (const thought of thoughts) {
+  const bucket = bucketFor(yearKey(thought.data.createdAt));
+  bucket.thoughts += 1;
+  monthFor(bucket, monthKey(thought.data.createdAt)).thoughts += 1;
+}
+
+for (const post of posts) {
+  const bucket = bucketFor(yearKey(post.data.pubDate));
+  bucket.posts += 1;
+  monthFor(bucket, monthKey(post.data.pubDate)).posts += 1;
+}
+
+const ordered = [...years.entries()].sort((a, b) => Number(b[0]) - Number(a[0]));
+const isEmpty = thoughts.length === 0 && posts.length === 0;
+---
+
+<BaseLayout
+  title="归档"
+  description="按年份与月份浏览全部想法和文章。"
+  noindex
+>
+  <div class="container-list">
+    <header class="pt-12 pb-6 sm:pt-16">
+      <h1 class="font-serif text-[26px] leading-tight font-semibold tracking-tight">归档</h1>
+      <p class="mt-3 text-[13px] text-muted">
+        共 {thoughts.length} 条想法、{posts.length} 篇文章
+      </p>
+    </header>
+
+    {
+      isEmpty ? (
+        <EmptyState
+          title="还没有内容"
+          description="时间线从第一条想法开始。"
+          href={url('studio/')}
+          actionLabel="写一条"
+        />
+      ) : (
+        <div class="space-y-9">
+          {ordered.map(([year, bucket]) => (
+            <section class="border-t border-line pt-5">
+              <h2 class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span class="font-serif text-[19px] font-semibold tracking-tight">{year}</span>
+                <span class="text-[12.5px] text-muted">
+                  {bucket.thoughts} 条想法 · {bucket.posts} 篇文章
+                </span>
+              </h2>
+
+              <ul class="mt-3 grid gap-1.5 text-[14px] sm:grid-cols-2">
+                {[...bucket.months.entries()]
+                  .sort((a, b) => b[0].localeCompare(a[0]))
+                  .map(([month, counts]) => (
+                    <li>
+                      <a
+                        href={url(`archives/${year}/${month.slice(5)}/`)}
+                        class="flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-surface"
+                      >
+                        <span>{monthLabel(`${month}-01T00:00:00Z`)}</span>
+                        <span class="text-[12px] text-muted tabular-nums">
+                          {counts.thoughts + counts.posts}
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )
+    }
+  </div>
+</BaseLayout>

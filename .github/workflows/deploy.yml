@@ -1,0 +1,67 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages 部署需要的最小权限：读仓库、写 Pages、用 id-token 证明身份。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只允许一次 Pages 部署，但不要取消正在进行的部署（避免站点半成品）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # base 前缀、仓库全名、站点域名、OAuth 代理地址全部在构建期注入，
+      # 源码里因此没有任何硬编码的个人账号信息。
+      - name: 构建站点
+        run: npm run build
+        env:
+          PUBLIC_GITHUB_REPO: ${{ github.repository }}
+          PUBLIC_SITE_URL: "https://${{ github.repository_owner }}.github.io"
+          PUBLIC_GITHUB_BRANCH: main
+          PUBLIC_OAUTH_BASE: ${{ vars.PUBLIC_OAUTH_BASE }}
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: 发布
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

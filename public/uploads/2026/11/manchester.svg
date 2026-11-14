@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="海面与雪：安静的抽象封面">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cfd9dd"/>
+      <stop offset="62%" stop-color="#aebbc2"/>
+      <stop offset="100%" stop-color="#93a4ad"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5f7783"/>
+      <stop offset="55%" stop-color="#4a5f6a"/>
+      <stop offset="100%" stop-color="#37474f"/>
+    </linearGradient>
+    <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#sky)"/>
+
+  <!-- 远处雪岸 -->
+  <path d="M0 360c120-26 208-40 306-30 96 10 148 34 232 26 86-8 148-34 246-30 104 4 208 30 416 24v34H0Z" fill="#e9eef0" opacity="0.55"/>
+  <path d="M0 392c150-18 240-12 340 2 108 16 186 22 292 6 108-16 208-24 312-8 88 14 168 22 256 18v18H0Z" fill="#ffffff" opacity="0.35"/>
+
+  <!-- 海面 -->
+  <rect y="404" width="1200" height="226" fill="url(#sea)"/>
+
+  <!-- 海面上的雾 -->
+  <rect y="404" width="1200" height="72" fill="url(#mist)" opacity="0.35"/>
+
+  <!-- 水平细线 -->
+  <g stroke="#ffffff" stroke-opacity="0.16" stroke-width="1.6">
+    <path d="M0 462h1200"/>
+    <path d="M0 502h1200"/>
+    <path d="M0 548h1200"/>
+    <path d="M0 588h1200"/>
+  </g>
+
+  <!-- 雪点 -->
+  <g fill="#ffffff" fill-opacity="0.6">
+    <circle cx="168" cy="120" r="3"/>
+    <circle cx="262" cy="196" r="2.2"/>
+    <circle cx="412" cy="96" r="2.6"/>
+    <circle cx="548" cy="168" r="1.8"/>
+    <circle cx="706" cy="112" r="2.4"/>
+    <circle cx="842" cy="188" r="3.2"/>
+    <circle cx="964" cy="128" r="2"/>
+    <circle cx="1084" cy="212" r="2.6"/>
+    <circle cx="318" cy="288" r="1.8"/>
+    <circle cx="640" cy="252" r="2"/>
+    <circle cx="908" cy="300" r="1.6"/>
+    <circle cx="1028" cy="70" r="2.2"/>
+  </g>
+
+  <!-- 一条极小的船 -->
+  <g fill="#2b3a42" opacity="0.85">
+    <path d="M596 438h42l-4.6 8h-33z"/>
+    <rect x="616" y="414" width="1.8" height="24"/>
+    <path d="M618.4 415.6 632 438h-13.6z"/>
+  </g>
+
+  <rect x="0.75" y="0.75" width="1198.5" height="628.5" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1.5"/>
+</svg>

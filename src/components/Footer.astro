@@ -1,0 +1,40 @@
+---
+import { REPO, SITE, STUDIO_PATH, url } from '../lib/site';
+
+/** 年份动态：取当年，且不早于内容最新年份。 */
+const year = Math.max(new Date().getFullYear(), 2026);
+
+const links = [
+  { label: 'RSS', href: url('rss.xml'), external: false },
+  { label: '搜索', href: url('search/'), external: false },
+  { label: '写作', href: STUDIO_PATH, external: false },
+  { label: 'GitHub', href: `https://github.com/${REPO.fullName}`, external: true },
+];
+---
+
+<footer class="mt-16 border-t border-line py-8">
+  <div
+    class="container-list flex flex-col gap-3 text-[13px] text-muted sm:flex-row sm:items-center sm:justify-between"
+  >
+    <p class="leading-relaxed">
+      <span class="font-serif text-[14px] font-semibold tracking-tight text-ink">{SITE.title}</span>
+      <span class="mx-1.5" aria-hidden="true">·</span>
+      <span>© {year} {SITE.title}</span>
+    </p>
+
+    <nav aria-label="页脚" class="no-scrollbar flex items-center gap-4 overflow-x-auto">
+      {
+        links.map((link) => (
+          <a
+            href={link.href}
+            class="whitespace-nowrap transition-colors hover:text-ink"
+            rel={link.external ? 'noopener noreferrer' : undefined}
+            target={link.external ? '_blank' : undefined}
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+</footer>

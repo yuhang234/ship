@@ -1,0 +1,70 @@
+---
+/**
+ * 写作后台外壳：不挂前台 Header/Footer，也不引 sitemap，
+ * 只保留纸与墨的阅读感 + 一条极简顶栏。
+ */
+import '../styles/studio.css';
+import { SITE, STUDIO_PATH, CMS_PATH, url } from '../lib/site';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+const fullTitle = `${title} · 写作台 · ${SITE.title}`;
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>{fullTitle}</title>
+    <meta name="color-scheme" content="light dark" />
+
+    <script is:inline>
+      (() => {
+        const key = 'ship-theme';
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        let mode = 'system';
+        try {
+          const stored = window.localStorage.getItem(key);
+          if (stored === 'light' || stored === 'dark') mode = stored;
+        } catch (error) {
+          mode = 'system';
+        }
+        const resolved = mode === 'system' ? (media.matches ? 'dark' : 'light') : mode;
+        const root = document.documentElement;
+        root.dataset.theme = resolved;
+        root.dataset.themeMode = mode;
+        root.style.colorScheme = resolved;
+      })();
+    </script>
+  </head>
+
+  <body>
+    <a class="skip-link" href="#studio-main">跳到主内容</a>
+
+    <header class="studio-bar">
+      <div class="studio-bar-inner">
+        <div class="studio-brand">
+          <span class="studio-brand-name">ship</span>
+          <span class="studio-brand-tag">写作台</span>
+        </div>
+        <nav class="studio-nav" aria-label="后台导航">
+          <a href={url('')}>回站点</a>
+          <a href={url(CMS_PATH)}>CMS</a>
+          <a href={url(STUDIO_PATH)} aria-current="page">写作台</a>
+          <slot name="actions" />
+        </nav>
+      </div>
+    </header>
+
+    <main id="studio-main" class="studio-main">
+      <slot />
+    </main>
+
+    <slot name="scripts" />
+  </body>
+</html>

@@ -1,0 +1,11 @@
+name = "ship-oauth"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+[vars]
+# wrangler deploy 前替换为真实的 OAuth App Client ID
+GITHUB_CLIENT_ID = "Iv1.xxxxxxxxxxxx"
+# 站点 origin（GitHub Pages 域名），多个用英文逗号分隔
+ALLOWED_ORIGINS = "https://<owner>.github.io"
+
+# GITHUB_CLIENT_SECRET 不要写在这里，用：npx wrangler secret put GITHUB_CLIENT_SECRET

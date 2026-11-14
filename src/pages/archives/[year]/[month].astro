@@ -1,0 +1,132 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PostCard from '../../../components/PostCard.astro';
+import ThoughtEntry from '../../../components/ThoughtEntry.astro';
+import { monthKey } from '../../../lib/date';
+import { url } from '../../../lib/site';
+
+export async function getStaticPaths() {
+  const thoughts = await getCollection('thoughts');
+  const posts = await getCollection('writing', ({ data }) => data.published);
+
+  const keys = new Set<string>();
+  for (const thought of thoughts) keys.add(monthKey(thought.data.createdAt));
+  for (const post of posts) keys.add(monthKey(post.data.pubDate));
+
+  return [...keys].sort((a, b) => a.localeCompare(b)).map((key) => {
+    const [year, month] = key.split('-');
+    return { params: { year, month } };
+  });
+}
+
+const year = String(Astro.params.year);
+const month = String(Astro.params.month);
+
+const thoughts = (await getCollection('thoughts')).sort(
+  (a, b) => a.data.createdAt.valueOf() - b.data.createdAt.valueOf(),
+);
+const posts = (await getCollection('writing', ({ data }) => data.published)).sort(
+  (a, b) => a.data.pubDate.valueOf() - b.data.pubDate.valueOf(),
+);
+
+const stamp = `${year}-${month}`;
+const monthThoughts = thoughts.filter((thought) => monthKey(thought.data.createdAt) === stamp);
+const monthPosts = posts.filter((post) => monthKey(post.data.pubDate) === stamp);
+
+/** 相邻月份只在真实存在内容的月份里前后走，跨年由字符串键自然处理。 */
+const allKeys = [
+  ...new Set([
+    ...thoughts.map((thought) => monthKey(thought.data.createdAt)),
+    ...posts.map((post) => monthKey(post.data.pubDate)),
+  ]),
+].sort((a, b) => a.localeCompare(b));
+
+const currentIndex = allKeys.indexOf(stamp);
+const prev = currentIndex > 0 ? allKeys[currentIndex - 1] : undefined;
+const next =
+  currentIndex >= 0 && currentIndex < allKeys.length - 1 ? allKeys[currentIndex + 1] : undefined;
+
+const monthUrl = (key: string) => {
+  const [keyYear, keyMonth] = key.split('-');
+  return url(`archives/${keyYear}/${keyMonth}/`);
+};
+
+const label = (key: string) => {
+  const [keyYear, keyMonth] = key.split('-');
+  return `${keyYear}年${Number(keyMonth)}月`;
+};
+
+const heading = `${year}年${Number(month)}月`;
+---
+
+<BaseLayout title={heading} description={`${heading}的想法与文章。`}>
+  <div class="container-list">
+    <nav aria-label="返回归档" class="pt-10 text-[13px] text-muted">
+      <a href={url('archives/')} class="transition-colors hover:text-ink">← 归档</a>
+    </nav>
+
+    <header class="pt-4 pb-6">
+      <h1 class="font-serif text-[24px] leading-tight font-semibold tracking-tight sm:text-[26px]">
+        {heading}
+      </h1>
+      <p class="mt-2 text-[13px] text-muted">
+        {monthPosts.length} 篇文章 · {monthThoughts.length} 条想法
+      </p>
+    </header>
+
+    {
+      monthPosts.length > 0 && (
+        <section class="border-t border-line pt-4">
+          <h2 class="text-[12.5px] tracking-[0.08em] text-muted">文章</h2>
+          <div class="mt-1">
+            {monthPosts.map((post) => (
+              <PostCard post={post} />
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    {
+      monthThoughts.length > 0 && (
+        <section class="mt-8 border-t border-line pt-4">
+          <h2 class="text-[12.5px] tracking-[0.08em] text-muted">想法</h2>
+          <div class="mt-1">
+            {monthThoughts.map((thought) => (
+              <ThoughtEntry thought={thought} />
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    <nav
+      aria-label="相邻月份"
+      class="mt-10 flex items-center justify-between gap-4 border-t border-line pt-5 text-[13px] text-muted"
+    >
+      <span>
+        {
+          prev ? (
+            <a href={monthUrl(prev)} rel="prev" class="transition-colors hover:text-ink">
+              ← {label(prev)}
+            </a>
+          ) : (
+            <span>没有更早的月份</span>
+          )
+        }
+      </span>
+      <span>
+        {
+          next ? (
+            <a href={monthUrl(next)} rel="next" class="transition-colors hover:text-ink">
+              {label(next)} →
+            </a>
+          ) : (
+            <span>没有更晚的月份</span>
+          )
+        }
+      </span>
+    </nav>
+  </div>
+</BaseLayout>

@@ -1,0 +1,50 @@
+---
+import type { MarkdownHeading } from 'astro';
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+
+const { headings } = Astro.props;
+/** 只保留二、三级标题，目录保持安静。 */
+const items = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+---
+
+{
+  items.length > 0 && (
+    <div class="mb-8 min-w-0 lg:col-start-2 lg:row-start-2">
+      {/* 移动端：文首折叠目录 */}
+      <details class="group rounded-md border border-line lg:hidden">
+        <summary class="flex min-h-11 cursor-pointer items-center justify-between px-3 text-[13px] text-muted">
+          <span>目录</span>
+          <span class="text-[11px] transition-transform group-open:rotate-180" aria-hidden="true">
+            ⌄
+          </span>
+        </summary>
+        <ol class="space-y-1.5 border-t border-line px-3 py-2.5 text-[13px] text-muted">
+          {items.map((heading) => (
+            <li class={heading.depth === 3 ? 'pl-3' : undefined}>
+              <a href={`#${heading.slug}`} class="block py-0.5 transition-colors hover:text-ink">
+                {heading.text}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </details>
+
+      {/* 桌面端：右侧 sticky 目录 */}
+      <nav aria-label="文章目录" class="hidden lg:sticky lg:top-24 lg:block">
+        <p class="mb-2 text-[12px] tracking-wide text-muted">目录</p>
+        <ol class="space-y-1.5 border-l border-line pl-3 text-[13px] leading-relaxed text-muted">
+          {items.map((heading) => (
+            <li class={heading.depth === 3 ? 'pl-2.5' : undefined}>
+              <a href={`#${heading.slug}`} class="block py-0.5 transition-colors hover:text-ink">
+                {heading.text}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+    </div>
+  )
+}

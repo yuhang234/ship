@@ -1,0 +1,173 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ThoughtEntry from '../../components/ThoughtEntry.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import { monthKey, yearKey } from '../../lib/date';
+import { tagCounts } from '../../lib/text';
+import { url } from '../../lib/site';
+
+const thoughts = (await getCollection('thoughts')).sort(
+  (a, b) => b.data.createdAt.valueOf() - a.data.createdAt.valueOf(),
+);
+
+/** year → month → 条目，全部按时间倒序。 */
+const groups = new Map<string, Map<string, CollectionEntry<'thoughts'>[]>>();
+for (const thought of thoughts) {
+  const year = yearKey(thought.data.createdAt);
+  const month = monthKey(thought.data.createdAt);
+  const months = groups.get(year) ?? new Map<string, CollectionEntry<'thoughts'>[]>();
+  const list = months.get(month) ?? [];
+  list.push(thought);
+  months.set(month, list);
+  groups.set(year, months);
+}
+
+const topTags = tagCounts(thoughts.map((thought) => thought.data.tags)).slice(0, 8);
+---
+
+<BaseLayout
+  title="想法"
+  description="零散念头的时间线：一句话、一段引用、一个还没想清楚的判断。"
+>
+  <div class="container-list">
+    <header class="pt-12 pb-6 sm:pt-16">
+      <h1 class="font-serif text-[26px] leading-tight font-semibold tracking-tight">想法</h1>
+      <div class="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] text-muted">
+        <span>共 {thoughts.length} 条想法</span>
+        <a href={url('archives/')} class="transition-colors hover:text-ink">按月看归档 →</a>
+      </div>
+    </header>
+
+    {
+      topTags.length > 0 && (
+        <div class="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="按标签筛选">
+          <button
+            type="button"
+            data-tag-filter
+            data-tag=""
+            aria-pressed="true"
+            class="inline-flex min-h-9 items-center rounded-md border border-line px-2.5 text-[13px] whitespace-nowrap text-muted transition-colors hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper"
+          >
+            全部
+          </button>
+          {topTags.map((entry) => (
+            <button
+              type="button"
+              data-tag-filter
+              data-tag={entry.tag}
+              aria-pressed="false"
+              class="inline-flex min-h-9 items-center rounded-md border border-line px-2.5 text-[13px] whitespace-nowrap text-muted transition-colors hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper"
+            >
+              #{entry.tag}
+              <span class="ml-1 text-[11px] opacity-70">{entry.count}</span>
+            </button>
+          ))}
+        </div>
+      )
+    }
+
+    <p data-empty hidden class="mt-6 text-[14px] text-muted">
+      没有找到 <span data-empty-tag class="text-ink"></span> 的想法。
+      <a href={url('thoughts/')} class="underline decoration-line underline-offset-4 hover:decoration-accent">
+        看看全部
+      </a>
+    </p>
+
+    {
+      thoughts.length === 0 ? (
+        <div class="mt-8">
+          <EmptyState
+            title="还没有想法"
+            description="想法不需要完整，一句话就够了。"
+            href={url('studio/')}
+            actionLabel="写第一条"
+          />
+        </div>
+      ) : (
+        [...groups.entries()].map(([year, months]) => (
+          <section data-year={year} class="mt-9 first:mt-4">
+            <h2 class="font-serif text-[19px] font-semibold tracking-tight">{year}</h2>
+            {[...months.entries()].map(([month, items]) => (
+              <div data-month={month} class="mt-4">
+                <h3 class="text-[12.5px] tracking-[0.08em] text-muted">
+                  {Number(month.slice(5))} 月
+                  <span class="ml-1.5 opacity-70">{items.length}</span>
+                </h3>
+                <div class="mt-1">
+                  {items.map((thought) => (
+                    <ThoughtEntry thought={thought} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        ))
+      )
+    }
+  </div>
+
+  <script>
+    (() => {
+      const items = Array.from(document.querySelectorAll<HTMLElement>('[data-item]'));
+      const months = Array.from(document.querySelectorAll<HTMLElement>('[data-month]'));
+      const years = Array.from(document.querySelectorAll<HTMLElement>('[data-year]'));
+      const chips = Array.from(document.querySelectorAll('[data-tag-filter]'));
+      const emptyBlock = document.querySelector<HTMLElement>('[data-empty]');
+      const emptyTag = document.querySelector('[data-empty-tag]');
+
+      const normalize = (value: string | null) => (value || '').trim().toLowerCase();
+
+      const apply = (rawTag: string) => {
+        const tag = normalize(rawTag);
+        const filtering = tag !== '';
+        let visible = 0;
+
+        for (const item of items) {
+          const tags = (item.getAttribute('data-tags') || '')
+            .split(/\s+/)
+            .filter(Boolean)
+            .map(normalize);
+          const match = !filtering || tags.includes(tag);
+          item.hidden = !match;
+          if (match) visible += 1;
+        }
+
+        for (const month of months) {
+          const hasVisible = Array.from(month.querySelectorAll<HTMLElement>('[data-item]')).some(
+            (item) => !item.hidden,
+          );
+          month.hidden = !hasVisible;
+        }
+
+        for (const year of years) {
+          const hasVisible = Array.from(year.querySelectorAll<HTMLElement>('[data-month]')).some(
+            (month) => !month.hidden,
+          );
+          year.hidden = !hasVisible;
+        }
+
+        for (const chip of chips) {
+          const on = normalize(chip.getAttribute('data-tag')) === tag;
+          chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+
+        if (emptyBlock) {
+          emptyBlock.hidden = !filtering || visible > 0;
+          if (emptyTag) emptyTag.textContent = `#${rawTag}`;
+        }
+
+        const search = tag ? `?tag=${encodeURIComponent(rawTag)}` : '';
+        window.history.replaceState({}, '', `${window.location.pathname}${search}`);
+      };
+
+      for (const chip of chips) {
+        chip.addEventListener('click', () => apply(chip.getAttribute('data-tag') || ''));
+      }
+
+      const initial = new URLSearchParams(window.location.search).get('tag') || '';
+      apply(initial);
+    })();
+  </script>
+</BaseLayout>

@@ -1,0 +1,109 @@
+---
+/**
+ * 主题按钮：44x44，循环 浅色 → 深色 → 跟随系统。
+ * 图标由 global.css 里的 html[data-theme-mode] 规则切换，首屏由 BaseLayout 内联脚本写入，不会闪烁。
+ */
+---
+
+<button
+  type="button"
+  data-theme-toggle
+  class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-ink"
+  aria-label="主题：跟随系统，点击切换到浅色"
+>
+  <svg
+    class="theme-icon theme-icon--light h-[18px] w-[18px]"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="4.2"></circle>
+    <path
+      d="M12 2.4v2.1M12 19.5v2.1M2.4 12h2.1M19.5 12h2.1M5.2 5.2l1.5 1.5M17.3 17.3l1.5 1.5M18.8 5.2l-1.5 1.5M6.7 17.3l-1.5 1.5"
+    ></path>
+  </svg>
+
+  <svg
+    class="theme-icon theme-icon--dark h-[18px] w-[18px]"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.8 8.8 0 1 0 11.1 11.1Z"></path>
+  </svg>
+
+  <svg
+    class="theme-icon theme-icon--system h-[18px] w-[18px]"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="8.4"></circle>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="currentColor" stroke="none"></path>
+  </svg>
+</button>
+
+<script>
+  (() => {
+    const KEY = 'ship-theme';
+    const ORDER = ['light', 'dark', 'system'];
+    const NAME: Record<string, string> = { light: '浅色', dark: '深色', system: '跟随系统' };
+    const button = document.querySelector('[data-theme-toggle]');
+    if (!button) return;
+
+    const root = document.documentElement;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const readMode = () => {
+      try {
+        const stored = window.localStorage.getItem(KEY);
+        return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+      } catch (error) {
+        return 'system';
+      }
+    };
+
+    const resolve = (mode: string) => (mode === 'system' ? (media.matches ? 'dark' : 'light') : mode);
+
+    const paint = (mode: string) => {
+      const resolved = resolve(mode);
+      root.dataset.theme = resolved;
+      root.dataset.themeMode = mode;
+      root.style.colorScheme = resolved;
+      const next = ORDER[(ORDER.indexOf(mode) + 1) % ORDER.length];
+      const label = `主题：${NAME[mode]}，点击切换到${NAME[next]}`;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    };
+
+    const setMode = (mode: string) => {
+      try {
+        window.localStorage.setItem(KEY, mode);
+      } catch (error) {
+        /* 隐私模式下写不进去，只影响下次访问的初始状态 */
+      }
+      paint(mode);
+    };
+
+    paint(readMode());
+
+    button.addEventListener('click', () => {
+      const current = readMode();
+      const next = ORDER[(ORDER.indexOf(current) + 1) % ORDER.length];
+      setMode(next);
+    });
+
+    media.addEventListener('change', () => {
+      if (readMode() === 'system') paint('system');
+    });
+  })();
+</script>

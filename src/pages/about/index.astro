@@ -1,0 +1,129 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { CONTENT_PATHS, REPO, SITE, STUDIO_PATH, url } from '../../lib/site';
+
+const repoUrl = `https://github.com/${REPO.fullName}`;
+const blobBase = `${repoUrl}/blob/${REPO.branch}`;
+const thoughtsPath = `${repoUrl}/tree/${REPO.branch}/${CONTENT_PATHS.thoughts}`;
+const writingPath = `${repoUrl}/tree/${REPO.branch}/${CONTENT_PATHS.writing}`;
+
+const principles = [
+  {
+    title: '记录自由',
+    body: '想法不需要完整。一句抱怨、一段引用、一个还没想清楚的判断，都可以直接放下来，不用先想标题、分类和结构。',
+  },
+  {
+    title: '写作简单',
+    body: '从想到到保存之间只留三个决定：写什么、选哪些标签、点保存。没有分类树、没有 SEO 字段、没有必须先填的摘要。',
+  },
+  {
+    title: '内容自有',
+    body: '每条内容都是一个 Markdown 文件，跟着 Git 仓库走。你可以随时 clone 全部历史、离线阅读、搬到任何别的地方。',
+  },
+];
+
+const stack = [
+  { name: 'Astro', note: '静态站点生成，页面与 RSS、manifest 都是同一个构建产物。' },
+  { name: 'Tailwind CSS', note: '样式全部写在工具类和一份全局 CSS 里，不引入组件库。' },
+  { name: 'GitHub Pages', note: '托管，免费，构建由 GitHub Actions 完成。' },
+  { name: 'Sveltia CMS', note: '浏览器里的写作后台，提交走 GitHub API，不需要自己的数据库。' },
+];
+---
+
+<BaseLayout title="关于" description="ship 是什么、为什么这样写、内容存在哪里、怎么带走。">
+  <div class="container-reading">
+    <header class="pt-12 pb-6 sm:pt-16">
+      <h1 class="font-serif text-[26px] leading-tight font-semibold tracking-tight">关于</h1>
+      <p class="mt-3 text-[14.5px] leading-relaxed text-muted">{SITE.description}</p>
+    </header>
+
+    <section class="border-t border-line pt-6">
+      <h2 class="text-[13px] tracking-[0.08em] text-muted">这是什么</h2>
+      <p class="mt-2 text-[15px] leading-[1.85]">
+        {SITE.title} 是一个人的思想记录空间。一半是「想法」——按时间流下来的短句，没有标题，不做整理；一半是「文章」——值得展开、愿意反复修改的长文。两边共用同一套 Markdown 文件与同一个仓库，但从不混在同一个界面里。
+      </p>
+    </section>
+
+    <section class="mt-9 border-t border-line pt-6">
+      <h2 class="text-[13px] tracking-[0.08em] text-muted">三个原则</h2>
+      <dl class="mt-3 space-y-4">
+        {
+          principles.map((item) => (
+            <div>
+              <dt class="text-[15px] font-medium">{item.title}</dt>
+              <dd class="mt-1 text-[14.5px] leading-[1.8] text-muted">{item.body}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section class="mt-9 border-t border-line pt-6">
+      <h2 class="text-[13px] tracking-[0.08em] text-muted">技术栈</h2>
+      <ul class="mt-3 space-y-2.5">
+        {
+          stack.map((item) => (
+            <li class="text-[14.5px] leading-[1.8]">
+              <span class="font-medium">{item.name}</span>
+              <span class="mx-1.5 text-muted" aria-hidden="true">/</span>
+              <span class="text-muted">{item.note}</span>
+            </li>
+          ))
+        }
+      </ul>
+      <p class="mt-3 text-[14px] leading-[1.8] text-muted">
+        没有服务端、没有数据库。写作后台在浏览器里把改动直接提交到仓库，剩下的交给构建。
+      </p>
+    </section>
+
+    <section class="mt-9 border-t border-line pt-6">
+      <h2 class="text-[13px] tracking-[0.08em] text-muted">内容存在哪里</h2>
+      <ul class="mt-3 space-y-2 font-mono text-[13px]">
+        <li>
+          <a href={thoughtsPath} class="underline decoration-line underline-offset-4 hover:decoration-accent">{CONTENT_PATHS.thoughts}</a>
+          <span class="ml-2 font-sans text-[12.5px] text-muted">想法，文件名即 ID</span>
+        </li>
+        <li>
+          <a href={writingPath} class="underline decoration-line underline-offset-4 hover:decoration-accent">{CONTENT_PATHS.writing}</a>
+          <span class="ml-2 font-sans text-[12.5px] text-muted">文章，文件名即永久链接</span>
+        </li>
+        <li>
+          <span>{CONTENT_PATHS.uploads}</span>
+          <span class="ml-2 font-sans text-[12.5px] text-muted">文章里的图片</span>
+        </li>
+      </ul>
+      <p class="mt-3 text-[14px] leading-[1.8] text-muted">
+        每一条想法、每一篇文章都是一个独立的 <code class="rounded border border-line px-1 py-0.5 font-mono text-[12.5px]">.md</code> 文件，frontmatter 里只有时间、标签、分类、发布状态这类必要字段。
+      </p>
+    </section>
+
+    <section class="mt-9 border-t border-line pt-6">
+      <h2 class="text-[13px] tracking-[0.08em] text-muted">导出与迁移</h2>
+      <p class="mt-2 text-[14.5px] leading-[1.85]">
+        要带走全部内容，不需要任何导出按钮。仓库就是档案：
+      </p>
+      <ul class="mt-3 space-y-2 text-[14px] leading-[1.8] text-muted">
+        <li>
+          在 <a href={repoUrl} class="text-ink underline decoration-line underline-offset-4 hover:decoration-accent">GitHub 仓库</a> 里逐个打开文件，点「Raw」即可下载原始 Markdown。
+        </li>
+        <li>
+          想看某篇文章的源文件，路径是
+          <span class="font-mono text-[12.5px] text-ink">{repoUrl}/blob/{REPO.branch}/{CONTENT_PATHS.writing}/&lt;文件名&gt;.md</span>。
+        </li>
+        <li>
+          整仓克隆一条命令就够了：<span class="font-mono text-[12.5px] text-ink">git clone {repoUrl}.git</span>，拿到的是带完整提交历史的纯文本。
+        </li>
+      </ul>
+      <p class="mt-3 text-[14px] leading-[1.8] text-muted">
+        换一个静态站点生成器、换一个域名、甚至只留本地文件夹，都不需要改动内容本身。
+      </p>
+    </section>
+
+    <nav class="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-6 text-[13.5px]">
+      <a href={url('')} class="transition-colors hover:text-accent">← 回到首页</a>
+      <a href={url('archives/')} class="text-muted transition-colors hover:text-ink">归档</a>
+      <a href={url('search/')} class="text-muted transition-colors hover:text-ink">搜索</a>
+      <a href={STUDIO_PATH} class="text-muted transition-colors hover:text-ink">写作</a>
+    </nav>
+  </div>
+</BaseLayout>

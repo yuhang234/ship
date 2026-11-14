@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 类型检查与测试
+    runs-on: ubuntu-latest
+    # 与 deploy.yml 相同的构建期变量：astro check 与 build 依赖这些默认值之外的注入，
+    # 缺了会得到 owner/ship 之类的占位数据，e2e 断言就会失败。
+    env:
+      PUBLIC_GITHUB_REPO: ${{ github.repository }}
+      PUBLIC_SITE_URL: "https://${{ github.repository_owner }}.github.io"
+      PUBLIC_GITHUB_BRANCH: main
+      PUBLIC_OAUTH_BASE: ${{ vars.PUBLIC_OAUTH_BASE }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run check
+
+      - name: 构建站点
+        run: npm run build
+
+      - name: 单元测试
+        run: npm test
+
+      # e2e 只读 dist/，因此必须排在构建之后。
+      - name: 构建产物测试
+        run: npx vitest run --project e2e

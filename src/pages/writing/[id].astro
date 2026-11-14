@@ -1,0 +1,215 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { getCollection, render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Toc from '../../components/Toc.astro';
+import { isoUtc, longDate } from '../../lib/date';
+import { countWords, readingTime } from '../../lib/text';
+import { SITE, SITE_URL, url } from '../../lib/site';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('writing', ({ data }) => data.published);
+  return posts.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+interface Props {
+  entry: CollectionEntry<'writing'>;
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const ordered = (await getCollection('writing', ({ data }) => data.published)).sort(
+  (a, b) => a.data.pubDate.valueOf() - b.data.pubDate.valueOf(),
+);
+const position = ordered.findIndex((post) => post.id === entry.id);
+const older = position > 0 ? ordered[position - 1] : undefined;
+const newer = position >= 0 && position < ordered.length - 1 ? ordered[position + 1] : undefined;
+
+const { cjk, words } = countWords(entry.body ?? '');
+const wordsTotal = cjk + words;
+const minutes = readingTime(entry.body ?? '');
+const permalink = `${SITE_URL}${url(`writing/${entry.id}/`)}`;
+const cover = entry.data.cover ? url(entry.data.cover.replace(/^\/+/, '')) : undefined;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: entry.data.title,
+  description: entry.data.description,
+  datePublished: isoUtc(entry.data.pubDate),
+  dateModified: isoUtc(entry.data.updatedDate ?? entry.data.pubDate),
+  inLanguage: SITE.language,
+  author: { '@type': 'Person', name: SITE.author },
+  publisher: { '@type': 'Organization', name: SITE.title },
+  mainEntityOfPage: permalink,
+  url: permalink,
+  keywords: entry.data.tags.join(', '),
+  ...(cover ? { image: `${SITE_URL}${cover}` } : {}),
+};
+---
+
+<BaseLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  image={cover}
+  type="article"
+  publishedTime={isoUtc(entry.data.pubDate)}
+>
+  <div class="mx-auto w-full max-w-[60rem] px-5 sm:px-6">
+    <div class="lg:grid lg:grid-cols-[minmax(0,40rem)_13rem] lg:justify-center lg:gap-12">
+      <header class="pt-10 pb-6 sm:pt-14 lg:col-span-2 lg:row-start-1">
+        {
+          cover && (
+            <img
+              src={cover}
+              alt=""
+              width="1200"
+              height="630"
+              class="mb-7 max-h-[26rem] w-full rounded-md border border-line object-cover"
+            />
+          )
+        }
+
+        <h1 class="text-[26px] leading-[1.35] font-semibold tracking-tight sm:text-[30px]">
+          {entry.data.title}
+        </h1>
+
+        {
+          entry.data.description && (
+            <p class="mt-3 text-[14.5px] leading-relaxed text-muted">{entry.data.description}</p>
+          )
+        }
+
+        <div class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12.5px] text-muted">
+          <time datetime={isoUtc(entry.data.pubDate)} class="tabular-nums">
+            {longDate(entry.data.pubDate)}
+          </time>
+          <span aria-hidden="true">/</span>
+          <span>{minutes} 分钟</span>
+          <span aria-hidden="true">/</span>
+          <span>{wordsTotal} 字</span>
+          <span aria-hidden="true">/</span>
+          <span>{entry.data.category}</span>
+          {
+            entry.data.tags.length > 0 && (
+              <>
+                <span aria-hidden="true">/</span>
+                <span>{entry.data.tags.map((tag) => `#${tag}`).join(' ')}</span>
+              </>
+            )
+          }
+        </div>
+      </header>
+
+      <Toc headings={headings} />
+
+      <div class="prose-ship min-w-0 max-w-[40rem] lg:col-start-1 lg:row-start-2">
+        <Content />
+      </div>
+    </div>
+
+    <div class="mt-12 max-w-[40rem]">
+      <nav
+        aria-label="上一篇与下一篇"
+        class="flex flex-col gap-2 border-t border-line pt-5 text-[13.5px] text-muted sm:flex-row sm:justify-between"
+      >
+        <span>
+          {
+            older ? (
+              <a
+                href={url(`writing/${older.id}/`)}
+                class="transition-colors hover:text-ink"
+                rel="prev"
+              >
+                上一篇：{older.data.title}
+              </a>
+            ) : (
+              <span>已经是最早一篇</span>
+            )
+          }
+        </span>
+        <span class="sm:text-right">
+          {
+            newer ? (
+              <a href={url(`writing/${newer.id}/`)} class="transition-colors hover:text-ink" rel="next">
+                下一篇：{newer.data.title}
+              </a>
+            ) : (
+              <span>已经是最新一篇</span>
+            )
+          }
+        </span>
+      </nav>
+
+      <div class="mt-5 flex flex-col gap-3 text-[12.5px] text-muted sm:flex-row sm:items-center sm:justify-between">
+        <a
+          href={url('writing/')}
+          class="transition-colors hover:text-ink"
+        >
+          ← 返回文章列表
+        </a>
+
+        <div class="flex min-w-0 items-center gap-2">
+          <input
+            id="permalink"
+            type="text"
+            readonly
+            value={permalink}
+            aria-label="文章永久链接"
+            class="min-w-0 flex-1 truncate rounded-md border border-line bg-surface px-2 py-1.5 font-mono text-[11.5px] text-muted"
+          />
+          <button
+            type="button"
+            data-copy-permalink
+            class="shrink-0 rounded-md border border-line px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:text-ink"
+          >
+            复制链接
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+
+  <script>
+    (() => {
+      const input = document.getElementById('permalink') as HTMLInputElement | null;
+      const button = document.querySelector('[data-copy-permalink]');
+      if (!input || !button) return;
+
+      const original = button.textContent;
+      let timer = 0;
+
+      const flash = (text: string) => {
+        button.textContent = text;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          button.textContent = original;
+        }, 1800);
+      };
+
+      const fallback = () => {
+        const field = input;
+        field.focus();
+        field.select();
+        flash('请按 Ctrl+C');
+      };
+
+      button.addEventListener('click', async () => {
+        const value = input.value;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+            flash('已复制');
+            return;
+          }
+          fallback();
+        } catch (error) {
+          fallback();
+        }
+      });
+    })();
+  </script>
+</BaseLayout>

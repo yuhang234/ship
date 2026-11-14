@@ -1,0 +1,59 @@
+---
+import ThemeToggle from './ThemeToggle.astro';
+import { BASE, url } from '../lib/site';
+
+const links = [
+  { label: '想法', path: 'thoughts' },
+  { label: '文章', path: 'writing' },
+  { label: '归档', path: 'archives' },
+  { label: '关于', path: 'about' },
+  { label: '搜索', path: 'search' },
+];
+
+const pathname = Astro.url.pathname;
+const current = (pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname)
+  .replace(/^\/+/, '')
+  .replace(/\/+$/, '');
+const isActive = (path: string) => current === path || current.startsWith(`${path}/`);
+---
+
+<header
+  class="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur-md supports-[backdrop-filter]:bg-paper/70"
+>
+  <div class="container-list flex items-center gap-2 py-2">
+    <a
+      href={url('')}
+      class="shrink-0 font-serif text-[20px] font-semibold tracking-tight text-ink transition-colors hover:text-accent"
+      aria-label="ship 首页"
+    >
+      ship
+    </a>
+
+    <nav
+      aria-label="主导航"
+      class="no-scrollbar -mx-1 flex min-w-0 flex-1 items-center justify-end gap-0.5 overflow-x-auto whitespace-nowrap text-[14px] text-muted"
+    >
+      {
+        links.map((link) => {
+          const active = isActive(link.path);
+          return (
+            <a
+              href={url(`${link.path}/`)}
+              aria-current={active ? 'page' : undefined}
+              class:list={[
+                'inline-flex min-h-11 items-center rounded-md px-2.5 transition-colors',
+                active
+                  ? 'text-ink underline decoration-accent decoration-2 underline-offset-[6px]'
+                  : 'hover:text-ink',
+              ]}
+            >
+              {link.label}
+            </a>
+          );
+        })
+      }
+    </nav>
+
+    <ThemeToggle />
+  </div>
+</header>

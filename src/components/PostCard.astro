@@ -1,0 +1,45 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { isoUtc, shortDate } from '../lib/date';
+import { readingTime } from '../lib/text';
+import { url } from '../lib/site';
+
+interface Props {
+  post: CollectionEntry<'writing'>;
+}
+
+const { post } = Astro.props;
+const href = url(`writing/${post.id}/`);
+const minutes = readingTime(post.body ?? '');
+const tags = post.data.tags.slice(0, 2);
+---
+
+<article class="border-b border-line py-5 last:border-b-0" data-item data-category={post.data.category}>
+  <h3 class="text-[17px] leading-snug font-semibold tracking-tight">
+    <a href={href} class="hover:text-accent hover:underline decoration-line decoration-1 underline-offset-4">
+      {post.data.title}
+    </a>
+  </h3>
+
+  {
+    post.data.description && (
+      <p class="mt-1.5 line-clamp-2 text-[14px] leading-relaxed text-muted">{post.data.description}</p>
+    )
+  }
+
+  <div class="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12.5px] text-muted">
+    <time datetime={isoUtc(post.data.pubDate)} class="tabular-nums">{shortDate(post.data.pubDate)}</time>
+    <span aria-hidden="true">/</span>
+    <span>{minutes} 分钟</span>
+    <span aria-hidden="true">/</span>
+    <span>{post.data.category}</span>
+    {
+      tags.length > 0 && (
+        <>
+          <span aria-hidden="true">/</span>
+          <span>#{tags.join(' #')}</span>
+        </>
+      )
+    }
+  </div>
+</article>

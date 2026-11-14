@@ -1,0 +1,145 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import { yearKey } from '../../lib/date';
+import { url } from '../../lib/site';
+
+const posts = (await getCollection('writing', ({ data }) => data.published)).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+
+const groups = new Map<string, CollectionEntry<'writing'>[]>();
+for (const post of posts) {
+  const year = yearKey(post.data.pubDate);
+  const list = groups.get(year) ?? [];
+  list.push(post);
+  groups.set(year, list);
+}
+
+const categories = [...new Set(posts.map((post) => post.data.category))].sort((a, b) =>
+  a.localeCompare(b, 'zh-Hans-CN'),
+);
+---
+
+<BaseLayout title="文章" description="完整的文章：写完、改过、留下来。">
+  <div class="container-list">
+    <header class="pt-12 pb-6 sm:pt-16">
+      <h1 class="font-serif text-[26px] leading-tight font-semibold tracking-tight">文章</h1>
+      <div class="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] text-muted">
+        <span>共 {posts.length} 篇</span>
+        <a href={url('thoughts/')} class="transition-colors hover:text-ink">去看想法 →</a>
+      </div>
+    </header>
+
+    {
+      categories.length > 1 && (
+        <div
+          class="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+          role="group"
+          aria-label="按分类筛选"
+        >
+          <button
+            type="button"
+            data-category-filter
+            data-category=""
+            aria-pressed="true"
+            class="inline-flex min-h-9 items-center rounded-md border border-line px-2.5 text-[13px] whitespace-nowrap text-muted transition-colors hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper"
+          >
+            全部
+          </button>
+          {categories.map((category) => (
+            <button
+              type="button"
+              data-category-filter
+              data-category={category}
+              aria-pressed="false"
+              class="inline-flex min-h-9 items-center rounded-md border border-line px-2.5 text-[13px] whitespace-nowrap text-muted transition-colors hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper"
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+      )
+    }
+
+    <p data-empty hidden class="mt-6 text-[14px] text-muted">
+      这个分类下还没有文章。
+      <a href={url('writing/')} class="underline decoration-line underline-offset-4 hover:decoration-accent">
+        看全部
+      </a>
+    </p>
+
+    {
+      posts.length === 0 ? (
+        <div class="mt-8">
+          <EmptyState
+            title="还没有文章"
+            description="把一段完整的想法写下来，它就成了文章。"
+            href={url('studio/')}
+            actionLabel="开始写作"
+          />
+        </div>
+      ) : (
+        [...groups.entries()].map(([year, items]) => (
+          <section data-year={year} class="mt-9 first:mt-2">
+            <h2 class="text-[12.5px] tracking-[0.08em] text-muted">{year}</h2>
+            <div class="mt-1">
+              {items.map((post) => (
+                <PostCard post={post} />
+              ))}
+            </div>
+          </section>
+        ))
+      )
+    }
+  </div>
+
+  <script>
+    (() => {
+      const items = Array.from(document.querySelectorAll<HTMLElement>('[data-item]'));
+      const years = Array.from(document.querySelectorAll<HTMLElement>('[data-year]'));
+      const chips = Array.from(document.querySelectorAll('[data-category-filter]'));
+      const emptyBlock = document.querySelector<HTMLElement>('[data-empty]');
+
+      const normalize = (value: string | null) => (value || '').trim();
+
+      const apply = (rawCategory: string) => {
+        const category = normalize(rawCategory);
+        const filtering = category !== '';
+        let visible = 0;
+
+        for (const item of items) {
+          const match = !filtering || normalize(item.getAttribute('data-category')) === category;
+          item.hidden = !match;
+          if (match) visible += 1;
+        }
+
+        for (const year of years) {
+          const hasVisible = Array.from(year.querySelectorAll<HTMLElement>('[data-item]')).some(
+            (item) => !item.hidden,
+          );
+          year.hidden = !hasVisible;
+        }
+
+        for (const chip of chips) {
+          const on = normalize(chip.getAttribute('data-category')) === category;
+          chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+
+        if (emptyBlock) emptyBlock.hidden = !filtering || visible > 0;
+
+        const search = category ? `?category=${encodeURIComponent(rawCategory)}` : '';
+        window.history.replaceState({}, '', `${window.location.pathname}${search}`);
+      };
+
+      for (const chip of chips) {
+        chip.addEventListener('click', () => apply(chip.getAttribute('data-category') || ''));
+      }
+
+      apply(new URLSearchParams(window.location.search).get('category') || '');
+    })();
+  </script>
+</BaseLayout>

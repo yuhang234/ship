@@ -1,0 +1,37 @@
+{
+  "name": "ship",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ship — 个人思想记录与在线写作博客系统（Astro + Tailwind + GitHub Pages）",
+  "license": "MIT",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
+    "test:all": "npm run build && vitest run",
+    "verify": "astro check && npm run build && vitest run"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.9",
+    "@astrojs/rss": "^4.0.19",
+    "@astrojs/sitemap": "^3.7.5",
+    "@tailwindcss/vite": "^4.3.5",
+    "astro": "^7.4.12",
+    "dompurify": "^3.4.17",
+    "marked": "^18.2.0",
+    "tailwindcss": "^4.3.5",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-slug": "^6.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

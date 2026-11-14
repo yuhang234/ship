@@ -1,0 +1,260 @@
+---
+/**
+ * Sveltia CMS 后台入口（/admin/）。
+ *
+ * 这里刻意不套 BaseLayout、不引 global.css：CMS 是一个独立的单页应用，
+ * 自带完整的 UI 与路由，套用站点布局会互相干扰。页面只保留一条细窄状态条，
+ * 让主人一眼看到「登录代理是否就绪」以及返回站点 / 写作台的路。
+ *
+ * 配置由同目录的 `config.yml`（由 `config.yml.ts` 在构建期生成）提供，
+ * Sveltia 会自动按页面地址加载它。
+ */
+import { OAUTH_BASE, url } from '../../lib/site';
+
+const statusText =
+  OAUTH_BASE === ''
+    ? '登录服务未配置：请先部署 worker/ 并把地址写入仓库变量 PUBLIC_OAUTH_BASE（详见 README 第 5 节）'
+    : `登录代理：${OAUTH_BASE}`;
+const loginReady = OAUTH_BASE !== '';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>ship · 内容管理</title>
+    <style is:inline>
+      :root {
+        --paper: #faf9f7;
+        --ink: #191817;
+        --muted: #6b6862;
+        --line: #e7e3dc;
+        --surface: #ffffff;
+        --accent: #40694f;
+        color-scheme: light dark;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #121311;
+          --ink: #e9e6e0;
+          --muted: #9d9a92;
+          --line: #2a2b28;
+          --surface: #191a18;
+          --accent: #8fb9a0;
+        }
+      }
+
+      html[data-theme='light'] {
+        --paper: #faf9f7;
+        --ink: #191817;
+        --muted: #6b6862;
+        --line: #e7e3dc;
+        --surface: #ffffff;
+        --accent: #40694f;
+        color-scheme: light;
+      }
+
+      html[data-theme='dark'] {
+        --paper: #121311;
+        --ink: #e9e6e0;
+        --muted: #9d9a92;
+        --line: #2a2b28;
+        --surface: #191a18;
+        --accent: #8fb9a0;
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: ui-sans-serif, -apple-system, 'Segoe UI', 'Noto Sans SC', 'PingFang SC',
+          'Microsoft YaHei', sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      #admin-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 12px;
+        padding: 6px 14px calc(6px + env(safe-area-inset-bottom, 0px)) 14px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper);
+        color: var(--muted);
+      }
+
+      #admin-bar .admin-title {
+        color: var(--ink);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      #admin-bar .admin-status {
+        flex: 1 1 12rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      #admin-bar .admin-status[data-ready='false'] {
+        color: var(--muted);
+      }
+
+      #admin-bar .admin-status[data-ready='true'] {
+        color: var(--accent);
+      }
+
+      #admin-bar nav {
+        display: flex;
+        gap: 12px;
+      }
+
+      #admin-bar a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 4px 0;
+      }
+
+      #admin-bar a:hover,
+      #admin-bar a:focus-visible {
+        color: var(--ink);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      #admin-bar a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      #admin-fallback {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 24px 20px 40px;
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.9;
+      }
+
+      #admin-fallback[hidden] {
+        display: none;
+      }
+
+      #admin-fallback h2 {
+        margin: 0 0 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      #admin-fallback p {
+        margin: 0 0 8px;
+      }
+
+      #admin-fallback a {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+
+    <!-- 主题：与站点一致，读 localStorage 的 ship-theme，首屏同步执行避免闪烁。 -->
+    <script is:inline>
+      (function () {
+        try {
+          var saved = localStorage.getItem('ship-theme');
+          if (saved === 'light' || saved === 'dark') {
+            document.documentElement.dataset.theme = saved;
+          }
+        } catch (error) {
+          /* 隐私模式下 localStorage 可能不可用，忽略即可。 */
+        }
+      })();
+    </script>
+
+    <!-- 构建期常量：登录代理地址（供下面的兜底提示使用）。 -->
+    <script is:inline define:vars={{ OAUTH_BASE }}>
+      window.__shipOauthBase = typeof OAUTH_BASE === 'undefined' ? '' : String(OAUTH_BASE);
+    </script>
+
+    <!-- CMS 加载兜底：脚本挂了也不能是白屏。 -->
+    <script is:inline>
+      (function () {
+        var holder = document.getElementById('admin-fallback');
+        var detail = document.getElementById('admin-fallback-detail');
+        var initialChildren = document.body ? document.body.childElementCount : 0;
+
+        function showFallback(reason) {
+          if (!holder) return;
+          holder.hidden = false;
+          if (detail && reason) detail.textContent = reason;
+        }
+
+        window.__shipCmsFallback = showFallback;
+
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event.target;
+            if (target && target.tagName === 'SCRIPT' && String(target.src || '').indexOf('sveltia-cms') !== -1) {
+              showFallback('CMS 脚本加载失败：' + target.src + '（检查网络或稍后刷新）');
+            }
+          },
+          true,
+        );
+
+        window.setTimeout(function () {
+          if (!document.body || document.body.childElementCount <= initialChildren) {
+            showFallback('CMS 没有渲染出界面：请确认 ' + location.pathname + 'config.yml 可访问，且登录代理已配置。');
+          }
+        }, 10000);
+      })();
+    </script>
+
+    <!-- Sveltia 会自动加载同目录的 config.yml（/ship/admin/config.yml）。 -->
+    <script
+      type="module"
+      src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"
+      onerror="window.__shipCmsFallback && window.__shipCmsFallback('CMS 脚本加载失败：请检查网络后刷新')"
+    ></script>
+  </head>
+
+  <body>
+    <header id="admin-bar">
+      <span class="admin-title">ship · 内容管理</span>
+      <span class="admin-status" data-ready={loginReady ? 'true' : 'false'}>{statusText}</span>
+      <nav aria-label="导航">
+        <a href={url('')}>返回站点</a>
+        <a href={url('studio/')}>写作台</a>
+      </nav>
+    </header>
+
+    <div id="admin-fallback" hidden>
+      <h2>CMS 未能加载</h2>
+      <p id="admin-fallback-detail">
+        可能是网络问题，或 <code>config.yml</code> 尚未就绪，或登录代理（PUBLIC_OAUTH_BASE）还没配置。
+      </p>
+      <p>可以先改用自建写作台：<a href={url('studio/')}>/ship/studio/</a>。</p>
+      <p>
+        也可以在本地直接编辑 Markdown：<code>src/content/thoughts</code> 与
+        <code>src/content/writing</code>，push 后由 GitHub Actions 自动发布。
+      </p>
+    </div>
+  </body>
+</html>

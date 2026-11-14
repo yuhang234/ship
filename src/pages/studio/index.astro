@@ -1,0 +1,920 @@
+---
+/**
+ * 写作台首页：快速记录想法 + 最近想法管理 + 本地草稿恢复。
+ * 所有网络动作都在浏览器端通过 GitHub Contents API 完成（见 src/lib/studio-api.ts）。
+ */
+import StudioLayout from '../../layouts/StudioLayout.astro';
+import { OAUTH_BASE, url } from '../../lib/site';
+
+const oauthReady = OAUTH_BASE.trim().length > 0;
+---
+
+<StudioLayout title="写作台">
+  <div slot="actions" class="studio-actions">
+    <span class="studio-badge" data-session-badge>未登录</span>
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm"
+      data-sign-in
+      disabled={!oauthReady}
+    >
+      登录
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" data-sign-out hidden>退出</button>
+  </div>
+
+  <div class="studio-head">
+    <h1>写作台</h1>
+    <p class="studio-sub">随手记下念头，再把它写成长文。</p>
+  </div>
+
+  <section class="studio-card studio-auth" data-auth-bar aria-live="polite">
+    <p data-auth-hint>登录 GitHub 后即可写作。</p>
+    <div class="studio-row">
+      <button type="button" class="btn btn-primary" data-sign-in disabled={!oauthReady}>
+        登录 GitHub
+      </button>
+      <button type="button" class="btn btn-ghost" data-sign-out hidden>退出登录</button>
+    </div>
+  </section>
+
+  {
+    !oauthReady && (
+      <p class="studio-warn" role="alert" data-oauth-warn>
+        登录服务未配置：需要先部署 worker/ 并在构建时设置 PUBLIC_OAUTH_BASE，之后此处会变成可用的登录按钮。
+      </p>
+    )
+  }
+
+  <div class="studio-grid">
+    <div class="studio-col">
+      <form class="studio-card" data-thought-form novalidate>
+        <label class="field-label" for="thought-body">快速记录</label>
+        <textarea
+          id="thought-body"
+          class="field field-textarea"
+          data-thought-body
+          rows="5"
+          maxlength="4000"
+          placeholder="现在在想什么？"
+          aria-describedby="thought-draft-state"
+        ></textarea>
+        <p id="thought-draft-state" class="studio-note" data-draft-state aria-live="polite"></p>
+
+        <div class="field-group">
+          <label class="field-label" for="thought-tags">标签</label>
+          <div class="tagbox" data-tagbox>
+            <ul class="chips" data-chips aria-label="已添加的标签"></ul>
+            <input
+              id="thought-tags"
+              class="field"
+              data-tag-input
+              type="text"
+              autocomplete="off"
+              enterkeyhint="done"
+              placeholder="回车或逗号分隔"
+            />
+          </div>
+        </div>
+
+        <div class="field-group studio-row">
+          <button type="submit" class="btn btn-primary" data-submit-thought disabled={!oauthReady}>
+            记下来 (Ctrl+Enter)
+          </button>
+          <button type="button" class="btn btn-ghost" data-clear-thought>清空</button>
+        </div>
+      </form>
+
+      <section class="studio-card" data-drafts-card hidden>
+        <button type="button" class="studio-disclosure" data-drafts-toggle aria-expanded="false">
+          <span data-drafts-summary>有 0 份本地草稿值得恢复</span>
+        </button>
+        <ul class="draft-list" data-drafts-list hidden></ul>
+        <div class="studio-row" style="margin-top:0.5rem">
+          <button type="button" class="btn btn-ghost btn-sm" data-export-drafts>
+            导出全部草稿（JSON）
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="studio-col">
+      <section class="studio-card studio-list">
+        <div class="studio-list-head">
+          <h2>最近的想法</h2>
+          <button type="button" class="btn btn-ghost btn-sm" data-refresh-thoughts>刷新</button>
+        </div>
+        <p class="studio-skeleton" data-thoughts-loading hidden>正在读取旧想法…</p>
+        <p class="studio-empty" data-thoughts-empty hidden>还没有想法，写下第一条。</p>
+        <ul class="thought-list" data-thought-list></ul>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast-stack" data-toasts aria-live="assertive" aria-atomic="false"></div>
+</StudioLayout>
+
+<script>
+  import { clearSession, getSession, isOAuthConfigured, signIn } from '../../lib/auth';
+  import { isoStamp, toParts } from '../../lib/date';
+  import { type Draft, deleteDraft, getDraft, listDrafts, saveDraft } from '../../lib/idb';
+  import {
+    createThought,
+    deleteThought,
+    loadThoughts,
+    type ThoughtRecord,
+    updateThought,
+  } from '../../lib/studio-api';
+  import { url } from '../../lib/site';
+  import { normalizeTags } from '../../lib/text';
+
+  (() => {
+    const configured = isOAuthConfigured();
+
+    const messageOf = (error: unknown) => {
+      if (error instanceof Error && error.message) return error.message;
+      return '操作失败，请稍后重试';
+    };
+
+    const pad = (value: number) => String(value).padStart(2, '0');
+
+    /** 北京时区 HH:MM:SS */
+    const clockLabel = (date: Date) => {
+      const parts = toParts(date || new Date());
+      return `${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`;
+    };
+    /** 完整时间：2026-11-14 20:39（北京时区） */
+    const isoLabel = (value: string | Date | number): string => {
+      try {
+        return isoStamp(value);
+      } catch {
+        return '时间未知';
+      }
+    };
+
+
+    const toastStack = document.querySelector('[data-toasts]');
+
+    const toast = (
+      text: string,
+      tone: 'error' | 'ok' = 'error',
+      link?: { href: string; label: string },
+    ) => {
+      if (!toastStack) return;
+      const box = document.createElement('div');
+      box.className = 'toast';
+      box.dataset.tone = tone;
+      box.setAttribute('role', tone === 'ok' ? 'status' : 'alert');
+
+      const body = document.createElement('span');
+      body.className = 'toast-text';
+      body.textContent = text;
+      box.append(body);
+
+      if (link) {
+        const anchor = document.createElement('a');
+        anchor.href = link.href;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.textContent = link.label;
+        box.append(anchor);
+      }
+
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'toast-close';
+      close.setAttribute('aria-label', '关闭提示');
+      close.textContent = '×';
+      close.addEventListener('click', () => {
+        box.remove();
+      });
+      box.append(close);
+
+      toastStack.append(box);
+      window.setTimeout(() => {
+        box.remove();
+      }, 4000);
+    };
+
+    const setBusy = (
+      element: Element | null,
+      busy: boolean,
+      busyLabel: string,
+      idleLabel: string,
+    ) => {
+      if (!(element instanceof HTMLButtonElement)) return;
+      element.disabled = busy;
+      element.textContent = busy ? busyLabel : idleLabel;
+    };
+
+    // ---------- 登录态 ----------
+    let session = getSession();
+
+    const sessionBadge = document.querySelector('[data-session-badge]');
+    const authHint = document.querySelector('[data-auth-hint]');
+    const signInButtons = Array.from(document.querySelectorAll('[data-sign-in]'));
+    const signOutButtons = Array.from(document.querySelectorAll('[data-sign-out]'));
+
+    const syncSignInButtons = (busy: boolean) => {
+      for (const button of signInButtons) {
+        if (!(button instanceof HTMLButtonElement)) continue;
+        const compact = button.classList.contains('btn-sm');
+        button.disabled = busy || !configured;
+        if (busy) button.textContent = '登录中…';
+        else button.textContent = compact ? '登录' : '登录 GitHub';
+      }
+    };
+
+    const renderSession = () => {
+      if (sessionBadge) sessionBadge.textContent = session ? session.login : '未登录';
+      if (authHint) {
+        authHint.textContent = session
+          ? `已登录：${session.login}`
+          : configured
+            ? '登录 GitHub 后即可写作。'
+            : '登录服务未配置，暂时无法提交。仍可先写，内容会保存在本地草稿。';
+      }
+      for (const button of signOutButtons) {
+        if (button instanceof HTMLElement) button.hidden = !session;
+      }
+      syncSignInButtons(false);
+      syncSubmitLabel();
+    };
+
+    const handleSignIn = async () => {
+      if (!configured) {
+        toast('登录服务未配置：请先部署 Cloudflare Worker 并设置 PUBLIC_OAUTH_BASE');
+        return;
+      }
+      syncSignInButtons(true);
+      try {
+        const next = await signIn();
+        session = next;
+        renderSession();
+        toast(`已登录：${next.login}`, 'ok');
+        await refreshThoughts();
+        await renderDrafts();
+      } catch (error) {
+        toast(messageOf(error));
+      } finally {
+        syncSignInButtons(false);
+        renderSession();
+      }
+    };
+
+    const handleSignOut = () => {
+      clearSession();
+      session = null;
+      thoughts = [];
+      editingId = '';
+      pendingDeleteId = '';
+      renderSession();
+      renderThoughts();
+      toast('已退出登录', 'ok');
+    };
+
+    // ---------- 快速记录 ----------
+    const form = document.querySelector('[data-thought-form]');
+    const bodyInput = document.querySelector('[data-thought-body]');
+    const tagInput = document.querySelector('[data-tag-input]');
+    const chipsBox = document.querySelector('[data-chips]');
+    const draftState = document.querySelector('[data-draft-state]');
+    const submitThought = document.querySelector('[data-submit-thought]');
+    const clearThought = document.querySelector('[data-clear-thought]');
+
+    let tags: string[] = [];
+
+    const syncSubmitLabel = () => {
+      if (!(submitThought instanceof HTMLButtonElement)) return;
+      if (submitThought.dataset.busy === 'true') return;
+      submitThought.disabled = !session;
+      submitThought.textContent = session ? '记下来 (Ctrl+Enter)' : '登录后保存';
+    };
+
+    const autoGrow = () => {
+      if (!(bodyInput instanceof HTMLTextAreaElement)) return;
+      bodyInput.style.height = 'auto';
+      bodyInput.style.height = `${bodyInput.scrollHeight}px`;
+    };
+
+    const renderChips = () => {
+      if (!chipsBox) return;
+      chipsBox.replaceChildren();
+      for (const tag of tags) {
+        const item = document.createElement('li');
+        item.className = 'chip';
+        const label = document.createElement('span');
+        label.textContent = tag;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'chip-remove';
+        remove.setAttribute('aria-label', `移除标签 ${tag}`);
+        remove.textContent = '×';
+        remove.addEventListener('click', () => {
+          tags = tags.filter((entry) => entry !== tag);
+          renderChips();
+          scheduleDraftSave();
+        });
+        item.append(label, remove);
+        chipsBox.append(item);
+      }
+    };
+
+    const addTags = (raw: string) => {
+      const parts = raw
+        .split(/[,，、;；\n\t]+/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      if (parts.length === 0) return;
+      tags = normalizeTags([...tags, ...parts]);
+      renderChips();
+      scheduleDraftSave();
+    };
+
+    let draftTimer = 0;
+
+    const scheduleDraftSave = () => {
+      window.clearTimeout(draftTimer);
+      draftTimer = window.setTimeout(() => {
+        void persistDraft();
+      }, 1200);
+    };
+
+    const persistDraft = async () => {
+      const body = bodyInput instanceof HTMLTextAreaElement ? bodyInput.value : '';
+      if (!body.trim() && tags.length === 0) {
+        await deleteDraft('thought:new');
+        if (draftState) draftState.textContent = '';
+        return;
+      }
+      const now = new Date();
+      await saveDraft({
+        key: 'thought:new',
+        kind: 'thought',
+        updatedAt: now.getTime(),
+        payload: { body, tags },
+      });
+      if (draftState) draftState.textContent = `草稿已本地保存 ${clockLabel(now)}`;
+    };
+
+    const resetForm = () => {
+      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = '';
+      tags = [];
+      renderChips();
+      autoGrow();
+      if (draftState) draftState.textContent = '';
+    };
+
+    const fillForm = (payload: { body: string; tags: string[] }) => {
+      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = payload.body;
+      tags = normalizeTags(payload.tags);
+      renderChips();
+      autoGrow();
+    };
+
+    const submit = async () => {
+      if (submitThought instanceof HTMLButtonElement) submitThought.dataset.busy = 'true';
+      if (!session) {
+        if (submitThought instanceof HTMLButtonElement) submitThought.dataset.busy = 'false';
+        toast('请先登录 GitHub 再提交');
+        return;
+      }
+      const body = bodyInput instanceof HTMLTextAreaElement ? bodyInput.value : '';
+      if (!body.trim()) {
+        toast('先写点什么，再记下来');
+        if (bodyInput instanceof HTMLTextAreaElement) bodyInput.focus();
+        if (submitThought instanceof HTMLButtonElement) submitThought.dataset.busy = 'false';
+        return;
+      }
+
+      window.clearTimeout(draftTimer);
+      setBusy(submitThought, true, '提交中…', '记下来 (Ctrl+Enter)');
+      try {
+        const record = await createThought({ body, tags });
+        highlightedId = record.id;
+        resetForm();
+        await deleteDraft('thought:new');
+        if (submitThought instanceof HTMLButtonElement) submitThought.dataset.busy = 'false';
+        toast('已提交，正在自动部署', 'ok');
+        await refreshThoughts();
+        await renderDrafts();
+      } catch (error) {
+        toast(messageOf(error));
+      } finally {
+        if (submitThought instanceof HTMLButtonElement) submitThought.dataset.busy = 'false';
+        syncSubmitLabel();
+      }
+    };
+
+    // ---------- 想法列表 ----------
+    let thoughts: ThoughtRecord[] = [];
+    let editingId = '';
+    let pendingDeleteId = '';
+    let highlightedId = '';
+
+    const list = document.querySelector('[data-thought-list]');
+    const loading = document.querySelector<HTMLElement>('[data-thoughts-loading]');
+    const empty = document.querySelector<HTMLElement>('[data-thoughts-empty]');
+    const refreshButton = document.querySelector('[data-refresh-thoughts]');
+
+    const buildEditor = (record: ThoughtRecord) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'thought-editor';
+
+      const label = document.createElement('label');
+      label.className = 'field-label';
+      const fieldId = `thought-edit-${record.id}`;
+      label.setAttribute('for', fieldId);
+      label.textContent = '编辑这条想法';
+
+      const area = document.createElement('textarea');
+      area.id = fieldId;
+      area.className = 'field field-textarea';
+      area.value = record.body;
+      area.rows = 4;
+
+      const tagField = document.createElement('input');
+      tagField.className = 'field';
+      tagField.type = 'text';
+      tagField.value = record.tags.join(', ');
+      tagField.setAttribute('aria-label', '标签（用逗号分隔）');
+      tagField.style.marginTop = '0.5rem';
+
+      const row = document.createElement('div');
+      row.className = 'studio-row';
+      row.style.marginTop = '0.5rem';
+
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn-primary btn-sm';
+      save.dataset.action = 'save-edit';
+      save.dataset.id = record.id;
+      save.textContent = '保存';
+
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-ghost btn-sm';
+      cancel.dataset.action = 'cancel-edit';
+      cancel.dataset.id = record.id;
+      cancel.textContent = '取消';
+
+      row.append(save, cancel);
+      wrap.append(label, area, tagField, row);
+      return wrap;
+    };
+
+    const buildActions = (record: ThoughtRecord) => {
+      const row = document.createElement('div');
+      row.className = 'thought-actions';
+
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'btn btn-ghost btn-sm';
+      edit.dataset.action = 'edit';
+      edit.dataset.id = record.id;
+      edit.textContent = '编辑';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-danger btn-sm';
+      remove.dataset.action = pendingDeleteId === record.id ? 'delete-confirm' : 'delete';
+      remove.dataset.id = record.id;
+      remove.textContent = pendingDeleteId === record.id ? '确认删除' : '删除';
+      remove.setAttribute('aria-label', `删除想法 ${record.id}`);
+
+      const toArticle = document.createElement('a');
+      toArticle.className = 'btn btn-ghost btn-sm';
+      toArticle.href = `${url('studio/write/')}?from=${encodeURIComponent(record.id)}`;
+      toArticle.textContent = '转成文章';
+
+      row.append(edit, remove, toArticle);
+
+      if (pendingDeleteId === record.id) {
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'btn btn-ghost btn-sm';
+        cancel.dataset.action = 'delete-cancel';
+        cancel.dataset.id = record.id;
+        cancel.textContent = '取消';
+        row.append(cancel);
+      }
+
+      return row;
+    };
+
+    const buildThought = (record: ThoughtRecord) => {
+      const item = document.createElement('li');
+      item.className = 'thought-item';
+      item.dataset.id = record.id;
+      if (record.id === highlightedId) item.dataset.highlight = 'true';
+
+      const meta = document.createElement('div');
+      meta.className = 'thought-meta';
+      const time = document.createElement('time');
+      time.dateTime = record.createdAt || '';
+      time.textContent = record.createdAt ? isoLabel(record.createdAt) : '时间未知';
+      meta.append(time);
+      if (record.updatedAt) {
+        const edited = document.createElement('span');
+        edited.textContent = `已编辑 ${isoLabel(record.updatedAt)}`;
+        meta.append(edited);
+      }
+      item.append(meta);
+
+      if (editingId === record.id) {
+        item.append(buildEditor(record));
+        return item;
+      }
+
+      const body = document.createElement('p');
+      body.className = 'thought-body';
+      body.textContent = record.body;
+      item.append(body);
+
+      if (record.tags.length > 0) {
+        const tagRow = document.createElement('div');
+        tagRow.className = 'thought-tags';
+        for (const tag of record.tags) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = `#${tag}`;
+          tagRow.append(chip);
+        }
+        item.append(tagRow);
+      }
+
+      item.append(buildActions(record));
+      return item;
+    };
+
+    const renderThoughts = () => {
+      if (loading) loading.hidden = true;
+      if (!list) return;
+      list.replaceChildren();
+      if (!session) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = '登录后可以查看最近的想法。';
+        }
+        return;
+      }
+      if (thoughts.length === 0) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = '还没有想法，写下第一条。';
+        }
+        return;
+      }
+      if (empty) empty.hidden = true;
+      const fragment = document.createDocumentFragment();
+      for (const record of thoughts) fragment.append(buildThought(record));
+      list.append(fragment);
+    };
+
+    const refreshThoughts = async () => {
+      if (!(refreshButton instanceof HTMLButtonElement)) return;
+      if (!session) {
+        thoughts = [];
+        renderThoughts();
+        return;
+      }
+      if (loading) loading.hidden = false;
+      if (empty) empty.hidden = true;
+      setBusy(refreshButton, true, '读取中…', '刷新');
+      try {
+        const all = await loadThoughts();
+        thoughts = all.slice(0, 30);
+      } catch (error) {
+        thoughts = [];
+        toast(messageOf(error));
+      } finally {
+        setBusy(refreshButton, false, '读取中…', '刷新');
+        renderThoughts();
+      }
+    };
+
+    const saveEdit = async (
+      id: string,
+      area: HTMLTextAreaElement,
+      tagField: HTMLInputElement,
+      button: Element | null,
+    ) => {
+      const record = thoughts.find((entry) => entry.id === id);
+      if (!record) return;
+      const body = area.value.trim();
+      if (!body) {
+        toast('内容不能为空');
+        return;
+      }
+      const nextTags = normalizeTags(
+        tagField.value
+          .split(/[,，、;；]+/)
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+      );
+      setBusy(button, true, '保存中…', '保存');
+      try {
+        const updated = await updateThought(record, { body, tags: nextTags });
+        thoughts = thoughts.map((entry) => (entry.id === id ? updated : entry));
+        editingId = '';
+        highlightedId = id;
+        renderThoughts();
+        toast('已更新，正在自动部署', 'ok');
+      } catch (error) {
+        toast(messageOf(error));
+        setBusy(button, false, '保存中…', '保存');
+      }
+    };
+
+    const removeThought = async (id: string) => {
+      const record = thoughts.find((entry) => entry.id === id);
+      if (!record) return;
+      setBusy(null, false, '', '');
+      const button = list ? list.querySelector(`[data-action="delete-confirm"][data-id="${id}"]`) : null;
+      setBusy(button, true, '删除中…', '确认删除');
+      try {
+        await deleteThought(record);
+        thoughts = thoughts.filter((entry) => entry.id !== id);
+        pendingDeleteId = '';
+        renderThoughts();
+        toast('已删除，正在自动部署', 'ok');
+      } catch (error) {
+        toast(messageOf(error));
+        pendingDeleteId = '';
+        renderThoughts();
+      }
+    };
+
+    if (list) {
+      list.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const trigger = target.closest('[data-action]');
+        if (!(trigger instanceof HTMLElement)) return;
+        const action = trigger.dataset.action || '';
+        const id = trigger.dataset.id || '';
+        if (!id) return;
+
+        if (action === 'edit') {
+          editingId = id;
+          pendingDeleteId = '';
+          renderThoughts();
+          const area = list.querySelector(`#thought-edit-${id}`);
+          if (area instanceof HTMLTextAreaElement) {
+            area.focus();
+            area.setSelectionRange(area.value.length, area.value.length);
+          }
+          return;
+        }
+
+        if (action === 'cancel-edit') {
+          editingId = '';
+          renderThoughts();
+          return;
+        }
+
+        if (action === 'save-edit') {
+          const item = trigger.closest('.thought-item');
+          if (!item) return;
+          const area = item.querySelector('textarea');
+          const tagField = item.querySelector('input[type="text"]');
+          if (!(area instanceof HTMLTextAreaElement) || !(tagField instanceof HTMLInputElement)) return;
+          void saveEdit(id, area, tagField, trigger);
+          return;
+        }
+
+        if (action === 'delete') {
+          editingId = '';
+          pendingDeleteId = id;
+          renderThoughts();
+          return;
+        }
+
+        if (action === 'delete-cancel') {
+          pendingDeleteId = '';
+          renderThoughts();
+          return;
+        }
+
+        if (action === 'delete-confirm') {
+          void removeThought(id);
+        }
+      });
+    }
+
+    // ---------- 本地草稿 ----------
+    const draftsCard = document.querySelector<HTMLElement>('[data-drafts-card]');
+    const draftsToggle = document.querySelector('[data-drafts-toggle]');
+    const draftsSummary = document.querySelector('[data-drafts-summary]');
+    const draftsList = document.querySelector<HTMLElement>('[data-drafts-list]');
+    const exportButton = document.querySelector('[data-export-drafts]');
+
+    const draftSummaryText = (value: unknown) => {
+      if (typeof value !== 'string') return '';
+      const text = value.replace(/\s+/g, ' ').trim();
+      return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+    };
+
+    const buildDraftItem = (draft: Draft) => {
+      const item = document.createElement('li');
+      item.className = 'draft-item';
+
+      const info = document.createElement('div');
+      const meta = document.createElement('div');
+      meta.className = 'draft-meta';
+      const when = document.createElement('span');
+      when.textContent = `${clockLabel(new Date(draft.updatedAt))} · ${draft.updatedAt ? isoLabel(new Date(draft.updatedAt).toISOString()) : '时间未知'}`;
+      const kind = document.createElement('span');
+      kind.textContent = draft.kind === 'thought' ? '想法草稿' : '文章草稿';
+      meta.append(kind, when);
+
+      const text = document.createElement('p');
+      text.className = 'draft-text';
+      const payload = draft.payload || {};
+      const preview = draft.kind === 'thought' ? draftSummaryText(payload.body) : draftSummaryText(payload.title || payload.body);
+      text.textContent = preview || '（空草稿）';
+
+      info.append(meta, text);
+
+      const actions = document.createElement('div');
+      actions.className = 'studio-row';
+
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'btn btn-ghost btn-sm';
+      restore.textContent = '恢复';
+      restore.addEventListener('click', () => {
+        if (draft.kind === 'thought') {
+          const body = typeof payload.body === 'string' ? payload.body : '';
+          const draftTags = Array.isArray(payload.tags)
+            ? payload.tags.filter((entry) => typeof entry === 'string')
+            : [];
+          fillForm({ body, tags: draftTags });
+          if (draftState) draftState.textContent = `草稿已本地保存 ${clockLabel(new Date(draft.updatedAt))}`;
+          void deleteDraft(draft.key).then(renderDrafts);
+          toast('已恢复到输入框', 'ok');
+          return;
+        }
+        window.location.href = `${url('studio/write/')}?draft=${encodeURIComponent(draft.key)}`;
+      });
+
+      const discard = document.createElement('button');
+      discard.type = 'button';
+      discard.className = 'btn btn-danger btn-sm';
+      discard.textContent = '丢弃';
+      discard.addEventListener('click', () => {
+        void deleteDraft(draft.key).then(() => {
+          toast('已丢弃本地草稿', 'ok');
+          return renderDrafts();
+        });
+      });
+
+      actions.append(restore, discard);
+      item.append(info, actions);
+      return item;
+    };
+
+    const renderDrafts = async () => {
+      if (!draftsCard || !draftsList) return;
+      const all = await listDrafts();
+      const rest = all.filter((draft) => draft.key !== 'thought:new');
+      if (rest.length === 0) {
+        draftsCard.hidden = true;
+        draftsList.hidden = true;
+        if (draftsToggle) draftsToggle.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      draftsCard.hidden = false;
+      if (draftsSummary) draftsSummary.textContent = `有 ${rest.length} 份本地草稿值得恢复`;
+      draftsList.replaceChildren();
+      for (const draft of rest) draftsList.append(buildDraftItem(draft));
+    };
+
+    if (draftsToggle) {
+      draftsToggle.addEventListener('click', () => {
+        if (!draftsList) return;
+        const expanded = draftsToggle.getAttribute('aria-expanded') === 'true';
+        draftsToggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        draftsList.hidden = expanded;
+      });
+    }
+
+    const exportDrafts = async () => {
+      const all = await listDrafts();
+      if (all.length === 0) {
+        toast('还没有本地草稿');
+        return;
+      }
+      const payload = JSON.stringify({ exportedAt: new Date().toISOString(), drafts: all }, null, 2);
+      const blob = new Blob([payload], { type: 'application/json' });
+      const objectUrl = URL.createObjectURL(blob);
+      const now = new Date();
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `ship-drafts-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.json`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+      }, 2000);
+      toast(`已导出 ${all.length} 份草稿`, 'ok');
+    };
+
+    // ---------- 事件绑定 ----------
+    for (const button of signInButtons) {
+      button.addEventListener('click', () => {
+        void handleSignIn();
+      });
+    }
+    for (const button of signOutButtons) {
+      button.addEventListener('click', handleSignOut);
+    }
+
+    if (form) {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void submit();
+      });
+      form.addEventListener('keydown', (event) => {
+        const keyboard = event as KeyboardEvent;
+        if (!(keyboard.metaKey || keyboard.ctrlKey) || keyboard.altKey) return;
+        if (keyboard.key !== 'Enter' || keyboard.isComposing) return;
+        keyboard.preventDefault();
+        void submit();
+      });
+    }
+
+    if (bodyInput instanceof HTMLTextAreaElement) {
+      bodyInput.addEventListener('input', () => {
+        autoGrow();
+        scheduleDraftSave();
+      });
+      bodyInput.addEventListener('blur', () => {
+        window.clearTimeout(draftTimer);
+        void persistDraft();
+      });
+    }
+
+    if (tagInput instanceof HTMLInputElement) {
+      tagInput.addEventListener('keydown', (event) => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter' || event.key === ',' || event.key === '，') {
+          event.preventDefault();
+          addTags(tagInput.value);
+        }
+        if (event.key === 'Backspace' && tagInput.value === '' && tags.length > 0) {
+          tags = tags.slice(0, -1);
+          renderChips();
+          scheduleDraftSave();
+        }
+      });
+      tagInput.addEventListener('blur', () => {
+        if (tagInput.value.trim()) addTags(tagInput.value);
+      });
+    }
+
+    if (clearThought) {
+      clearThought.addEventListener('click', () => {
+        resetForm();
+        void deleteDraft('thought:new');
+        toast('已清空', 'ok');
+        if (bodyInput instanceof HTMLTextAreaElement) bodyInput.focus();
+      });
+    }
+
+    if (refreshButton) {
+      refreshButton.addEventListener('click', () => {
+        void refreshThoughts();
+      });
+    }
+
+    if (exportButton) {
+      exportButton.addEventListener('click', () => {
+        void exportDrafts();
+      });
+    }
+
+    // ---------- 首次加载 ----------
+    void (async () => {
+      renderSession();
+      autoGrow();
+      const stored = await getDraft('thought:new');
+      if (stored) {
+        const payload = stored.payload || {};
+        const body = typeof payload.body === 'string' ? payload.body : '';
+        const draftTags = Array.isArray(payload.tags)
+          ? payload.tags.filter((entry) => typeof entry === 'string')
+          : [];
+        if (body || draftTags.length > 0) {
+          fillForm({ body, tags: draftTags });
+          if (draftState) {
+            draftState.textContent = `草稿已本地保存 ${clockLabel(new Date(stored.updatedAt))}`;
+          }
+        }
+      }
+      await refreshThoughts();
+      await renderDrafts();
+    })();
+  })();
+</script>
