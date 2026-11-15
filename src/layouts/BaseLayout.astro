@@ -110,7 +110,8 @@ const ogImage = image
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+          const basePath = import.meta.env.BASE_URL.replace(/\/+$/, '');
+          const swUrl = `${basePath}/sw.js`;
           navigator.serviceWorker.register(swUrl).catch(() => {
             /* 离线能力不可用不影响正常阅读 */
           });

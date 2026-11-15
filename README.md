@@ -6,9 +6,9 @@
 - **文章**：在网页里写成完整文章，保存即发布。
 - **内容**：全部是仓库里的 Markdown 文件，随时可导出、可迁移、可版本回溯。
 
-线上站点：`https://<owner>.github.io/ship/`
-写作后台：`https://<owner>.github.io/ship/studio/`
-CMS 后台：`https://<owner>.github.io/ship/admin/`
+线上站点：`https://yuhang234.github.io/ship/`
+写作后台：`https://yuhang234.github.io/ship/studio/`
+CMS 后台：`https://yuhang234.github.io/ship/admin/`
 
 ---
 

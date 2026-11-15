@@ -229,3 +229,20 @@ describe('dist/manifest.webmanifest 与 sw.js', () => {
     expect(sw).toMatch(/install|fetch|activate/);
   });
 });
+
+describe('PWA 与离线能力', () => {
+  it('首页注册 Service Worker 使用带 base 的 /ship/sw.js', () => {
+    // Astro 会把内联脚本打包进 _astro/*.js，因此在产物 JS 里一起找注册地址。
+    const bundles = readdirSync(distPath('_astro')).filter((file) => file.endsWith('.js'));
+    const sources = [readDist('index.html'), ...bundles.map((file) => readDist(`_astro/${file}`))];
+    const joined = sources.join('\n');
+    expect(joined, '产物里应出现 Service Worker 注册').toContain('sw.js');
+    expect(joined, '缺少斜杠会拼成 /shipsw.js，导致 404').not.toContain('/shipsw.js');
+  });
+
+  it('sw.js 的预缓存地址都带 /ship/ 前缀', () => {
+    const sw = readDist('sw.js');
+    expect(sw).toContain("const BASE = '/ship/'");
+    expect(sw).not.toContain("'/ship404.html'");
+  });
+});
