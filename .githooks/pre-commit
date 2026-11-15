@@ -1,0 +1,11 @@
+#!/bin/sh
+# 提交前拦截：发现疑似密钥就中止本次 commit。
+# 启用方式：git config core.hooksPath .githooks
+set -e
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+if ! command -v node >/dev/null 2>&1; then
+  echo "跳过密钥扫描：未找到 node"
+  exit 0
+fi
+node scripts/check-secrets.mjs

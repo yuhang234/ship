@@ -20,10 +20,13 @@ const POPUP_NAME = 'ship-oauth';
 const POPUP_TIMEOUT = 120_000;
 const POPUP_POLL = 200;
 
-/** 读取当前标签页的登录态；没有或格式不对时返回 null。 */
-export function getSession(): Session | null {
+/** 是否在三处存储里都找一遍：先看会话（当前标签页），再看持久存储（跨会话）。 */
+const STORAGE_PERSIST_KEY = 'ship.session.persist';
+
+/** 读存储里的登录态，读失败或格式不对返回 null。 */
+function readSession(storage: Storage): Session | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -37,21 +40,48 @@ export function getSession(): Session | null {
   }
 }
 
-/** 保存登录态（仅当前标签页）。 */
-export function saveSession(session: Session): void {
+/**
+ * 读取登录态：先当前标签页，再持久存储。
+ *
+ * 持久化用 localStorage（键 `ship.session.persist`），因此关掉浏览器再打开仍然登录；
+ * 只有点「退出登录」或手动清站点数据才会失效。token 仍然只在本机、不出站。
+ */
+export function getSession(): Session | null {
+  return readSession(sessionStorage) ?? readSession(localStorage);
+}
+
+/**
+ * 保存登录态。
+ * @param session 会话
+ * @param remember 是否持久保存（默认 true：下次打开浏览器不用再登录）
+ */
+export function saveSession(session: Session, remember = true): void {
+  const payload = JSON.stringify({ token: session.token, login: session.login });
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ token: session.token, login: session.login }));
+    sessionStorage.setItem(STORAGE_KEY, payload);
   } catch {
     // 隐私模式下写不进去：忽略，用户下次仍需登录
   }
-}
-
-/** 清除登录态。 */
-export function clearSession(): void {
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    if (remember) {
+      localStorage.setItem(STORAGE_PERSIST_KEY, payload);
+    } else {
+      localStorage.removeItem(STORAGE_PERSIST_KEY);
+    }
   } catch {
     // 忽略
+  }
+}
+
+/** 清除登录态（会话与持久化一起清）。 */
+export function clearSession(): void {
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      storage.removeItem(STORAGE_KEY);
+      storage.removeItem(STORAGE_PERSIST_KEY);
+    } catch {
+      // 忽略
+    }
   }
 }
 
@@ -221,20 +251,39 @@ export function redirectToAuth(): void {
 }
 
 /**
+ * 上一次登录失败的原因（来自 `#gh_error`），由 takeAuthError() 取走并清空。
+ * 这样页面启动时既能提示"账号没有授权"，又不会因为抛异常中断整个后台。
+ */
+let lastAuthError = '';
+
+/** 取走并清空最近一次登录失败原因。 */
+export function takeAuthError(): string {
+  const message = lastAuthError;
+  lastAuthError = '';
+  return message;
+}
+
+/**
  * 页面启动时恢复登录态：
- * 1. 若 URL 片段里有 `gh_token`（整页跳转回跳），校验后写入 sessionStorage 并清掉片段；
- * 2. 否则直接读 sessionStorage。
+ * 1. URL 片段里有 `gh_error`（服务端拒绝授权）→ 记下原因并清掉片段；
+ * 2. 片段里有 `gh_token`（整页跳转回跳）→ 校验后写入存储并清掉片段；
+ * 3. 否则直接读存储。
  */
 export async function restoreSession(): Promise<Session | null> {
   const hash = window.location.hash;
-  if (!hash || !hash.includes('gh_token=')) return getSession();
+  if (!hash || (!hash.includes('gh_token=') && !hash.includes('gh_error='))) return getSession();
 
   const params = new URLSearchParams(hash.replace(/^#/, ''));
   const token = (params.get('gh_token') ?? '').trim();
+  const errorText = (params.get('gh_error') ?? '').trim();
 
-  // 立刻清掉片段，避免 token 留在地址栏与历史记录里。
+  // 立刻清掉片段，避免 token 或错误信息留在地址栏与历史记录里。
   window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
 
+  if (errorText) {
+    lastAuthError = errorText.slice(0, 120);
+    return getSession();
+  }
   if (!token) return getSession();
 
   const api = new GitHubApi({
@@ -243,8 +292,13 @@ export async function restoreSession(): Promise<Session | null> {
     repo: REPO.name,
     branch: REPO.branch,
   });
-  const user = await api.getUser();
-  const session: Session = { token, login: user.login };
-  saveSession(session);
-  return session;
+  try {
+    const user = await api.getUser();
+    const session: Session = { token, login: user.login };
+    saveSession(session);
+    return session;
+  } catch (error) {
+    lastAuthError = error instanceof Error ? error.message : '登录失败：无法校验 token';
+    return getSession();
+  }
 }

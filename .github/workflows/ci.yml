@@ -28,6 +28,10 @@ jobs:
           node-version: 22
           cache: npm
 
+      # 密钥扫描不依赖第三方依赖，放在最前面，命中即整条流水线失败。
+      - name: 密钥扫描
+        run: node scripts/check-secrets.mjs
+
       - name: 安装依赖
         run: npm ci
 

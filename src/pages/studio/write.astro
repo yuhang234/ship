@@ -216,7 +216,7 @@ const categories = ['随笔', '技术', '电影', '阅读', '生活'];
 </StudioLayout>
 
 <script>
-  import { getSession, isOAuthConfigured, restoreSession, signIn } from '../../lib/auth';
+  import { getSession, isOAuthConfigured, restoreSession, signIn, takeAuthError } from '../../lib/auth';
   import { REPO } from '../../lib/site';
   import { toParts } from '../../lib/date';
   import { applyFormat, bindShortcuts, countStats, renderPreview, type ToolbarAction } from '../../lib/editor';
@@ -904,6 +904,8 @@ const categories = ['随笔', '技术', '电影', '阅读', '生活'];
     state.dateLocal = defaultDateLocal;
     state.loading = false;
     await restoreSession();
+    const authError = takeAuthError();
+    if (authError) toast(authError);
     refreshAuth();
     refreshStats();
     refreshPreview();

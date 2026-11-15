@@ -15,6 +15,17 @@ worker/.wrangler/
 .env.local
 .env.*.local
 
+# 密钥与本地凭证一律不进仓库（.env.example 例外，里面只有占位符）
+.dev.vars
+.dev.vars.*
+worker/.dev.vars
+*.pem
+*.key
+*.p12
+*.pfx
+.wrangler/
+secrets.json
+
 # editor / OS
 .vscode/
 .idea/

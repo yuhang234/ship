@@ -15,6 +15,8 @@ interface Env {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   ALLOWED_ORIGINS?: string;
+  /** 允许登录的 GitHub 用户名（逗号分隔）；留空表示不限制（不推荐）。 */
+  GITHUB_ALLOWED_LOGINS?: string;
 }
 
 /**
@@ -418,6 +420,50 @@ async function exchangeToken(clientId: string, secret: string, code: string): Pr
   return { ok: false, reason: rawError ? sanitizeReasonParam(rawError) : 'token 交换失败' };
 }
 
+/** 解析允许登录的用户名列表（小写）。 */
+function parseAllowedLogins(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * 校验换到的 token 属于允许的账号。
+ *
+ * 为什么必须在服务端校验：OAuth 授权拿到的 token 属于**授权者自己**，
+ * 任何 GitHub 用户都能完成授权；真正决定能不能写仓库的是仓库权限。
+ * 但与其让陌生人拿到一个"能读到他自己仓库"的 token，不如直接在此拒绝，
+ * 这样即便站点被分享出去，也不会出现别人的内容落到你仓库里的可能。
+ */
+async function ensureLoginAllowed(
+  token: string,
+  rawAllowlist: string | undefined,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const allowlist = parseAllowedLogins(rawAllowlist);
+  if (allowlist.length === 0) return { ok: true };
+
+  let login = '';
+  try {
+    const response = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'User-Agent': SERVICE_NAME,
+      },
+    });
+    if (!response.ok) return { ok: false, reason: '无法确认 GitHub 账号' };
+    const data = (await response.json()) as { login?: unknown };
+    login = typeof data.login === 'string' ? data.login.toLowerCase() : '';
+  } catch {
+    return { ok: false, reason: '无法确认 GitHub 账号' };
+  }
+
+  if (!login) return { ok: false, reason: '无法确认 GitHub 账号' };
+  if (!allowlist.includes(login)) return { ok: false, reason: '这个 GitHub 账号没有写作权限' };
+  return { ok: true };
+}
+
 /** `GET /callback`：校验 state → 换 token → 把结果交给 opener。 */
 async function handleCallback(request: Request, env: Env, url: URL): Promise<Response> {
   const clientId = (env.GITHUB_CLIENT_ID ?? '').trim();
@@ -462,6 +508,25 @@ async function handleCallback(request: Request, env: Env, url: URL): Promise<Res
     });
   }
 
+  const loginCheck = await ensureLoginAllowed(result.token, env.GITHUB_ALLOWED_LOGINS);
+  if (!loginCheck.ok) {
+    if (payload.m === 'redirect') {
+      const location = `${payload.o}${payload.r ?? '/'}#gh_error=${encodeURIComponent(loginCheck.reason)}`;
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: location,
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
+    }
+    const denied = errorMessage(loginCheck.reason);
+    return new Response(htmlDocument(targetOrigin, denied, '授权未通过，可以关闭此窗口。'), {
+      status: 200,
+      headers: HTML_HEADERS,
+    });
+  }
   const message = successMessage(result.token);
   if (payload.m === 'redirect') {
     const location = `${payload.o}${payload.r ?? '/'}#gh_token=${encodeURIComponent(result.token)}`;

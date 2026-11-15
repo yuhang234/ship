@@ -11,10 +11,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:secrets:history": "node scripts/check-secrets.mjs --history",
     "test": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "test:all": "npm run build && vitest run",
-    "verify": "astro check && npm run build && vitest run"
+    "verify": "npm run check:secrets && astro check && npm run build && vitest run"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.9",

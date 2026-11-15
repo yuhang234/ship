@@ -30,6 +30,10 @@ jobs:
           node-version: 22
           cache: npm
 
+      # 推送前先扫一遍：任何密钥都不允许进入构建与发布环节。
+      - name: 密钥扫描
+        run: node scripts/check-secrets.mjs
+
       - name: 安装依赖
         run: npm ci
 
