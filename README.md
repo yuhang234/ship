@@ -136,12 +136,28 @@ PUBLIC_OAUTH_BASE=https://ship-oauth.<your-subdomain>.workers.dev
 
 ---
 
-## 5. 登录（GitHub OAuth）——必须完成的一步
+## 5. 登录（GitHub OAuth）——已配置完成
 
-Sveltia CMS 和自建写作后台都需要一个 OAuth 代理来换取 GitHub token（静态站点不能保存 client
-secret，也不能在浏览器里硬编码 token）。`worker/` 就是这个代理，零依赖、跑在 Cloudflare Workers
+> **当前状态：已接入并实测通过。** 下面 5.1–5.3 保留为"重建/迁移时的参考步骤"。
+>
+> | 项 | 实际值 |
+> | --- | --- |
+> | OAuth App | `ship`（owner `yuhang234`，Client ID `Ov23liPCcOFzf3e8DAxM`） |
+> | 回调地址 | `https://ship-oauth.ship-oauth-yuhang234.workers.dev/callback` |
+> | Worker | `https://ship-oauth.ship-oauth-yuhang234.workers.dev`（`/health` 返回 `{"ok":true}`） |
+> | 仓库变量 | `PUBLIC_OAUTH_BASE` = 上面 Worker 地址 |
+>
+> 登录方式有两条，页面会按能力自动选择：
+> 1. 桌面浏览器：弹窗 + `postMessage` 回传 token（Netlify CMS / Sveltia 同款协议）；
+> 2. 弹窗被拦截时（移动端 Chrome、内嵌 WebView）：自动整页跳转授权，完成后带
+>    `#gh_token=...` 回跳，前端校验后立刻写入 `sessionStorage` 并清除 URL 片段。
+>
+> token 只存在于当前标签页的 `sessionStorage`，关闭标签页即失效，不进仓库、不进 localStorage。
+
+### 5.0 设计要点（为什么要一个 Worker）
+Sveltia CMS 和自建写作后台都需要一个 OAuth 代理来换取 GitHub token：静态站点不能保存 client
+secret，也不能在浏览器里硬编码 token。`worker/` 就是这个代理，零依赖、跑在 Cloudflare Workers
 免费额度上。
-
 ### 5.1 创建 GitHub OAuth App
 
 GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App：
