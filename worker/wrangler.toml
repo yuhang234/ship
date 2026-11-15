@@ -3,9 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2026-01-01"
 
 [vars]
-# wrangler deploy 前替换为真实的 OAuth App Client ID
-GITHUB_CLIENT_ID = "Iv1.xxxxxxxxxxxx"
+# 真实的 GitHub OAuth App Client ID（应用名 ship，回调指向下面的 Worker /callback）
+GITHUB_CLIENT_ID = "Ov23liPCcOFzf3e8DAxM"
 # 站点 origin（GitHub Pages 域名），多个用英文逗号分隔
-ALLOWED_ORIGINS = "https://<owner>.github.io"
+ALLOWED_ORIGINS = "https://yuhang234.github.io"
 
 # GITHUB_CLIENT_SECRET 不要写在这里，用：npx wrangler secret put GITHUB_CLIENT_SECRET

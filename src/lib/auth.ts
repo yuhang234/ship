@@ -107,7 +107,11 @@ export async function signIn(): Promise<Session> {
     POPUP_NAME,
     `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no`,
   );
-  if (!popup) throw new Error('登录窗口被浏览器拦截：请允许本站弹出窗口后重试');
+  if (!popup) {
+    // 移动端浏览器与内嵌 WebView 常直接拦截 window.open：退化为整页跳转登录。
+    redirectToAuth();
+    throw new Error('登录窗口被浏览器拦截，已改用整页跳转登录…');
+  }
 
   const token = await new Promise<string>((resolve, reject) => {
     let settled = false;
@@ -197,6 +201,50 @@ export async function signIn(): Promise<Session> {
   }
 
   const session: Session = { token, login };
+  saveSession(session);
+  return session;
+}
+
+/**
+ * 整页跳转登录：不依赖弹窗，授权完成后 Worker 会把 token 放进 URL 片段回跳，
+ * 由 restoreSession() 消费。手机上最稳的一条路径。
+ */
+export function redirectToAuth(): void {
+  if (!isOAuthConfigured()) {
+    throw new Error('登录服务未配置：请先部署 Cloudflare Worker 并设置 PUBLIC_OAUTH_BASE');
+  }
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  const target = `${OAUTH_BASE}/auth?provider=github&site_id=ship&scope=repo&mode=redirect&return_to=${encodeURIComponent(
+    returnTo,
+  )}`;
+  window.location.assign(target);
+}
+
+/**
+ * 页面启动时恢复登录态：
+ * 1. 若 URL 片段里有 `gh_token`（整页跳转回跳），校验后写入 sessionStorage 并清掉片段；
+ * 2. 否则直接读 sessionStorage。
+ */
+export async function restoreSession(): Promise<Session | null> {
+  const hash = window.location.hash;
+  if (!hash || !hash.includes('gh_token=')) return getSession();
+
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const token = (params.get('gh_token') ?? '').trim();
+
+  // 立刻清掉片段，避免 token 留在地址栏与历史记录里。
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+
+  if (!token) return getSession();
+
+  const api = new GitHubApi({
+    token,
+    owner: REPO.owner,
+    repo: REPO.name,
+    branch: REPO.branch,
+  });
+  const user = await api.getUser();
+  const session: Session = { token, login: user.login };
   saveSession(session);
   return session;
 }

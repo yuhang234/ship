@@ -17,12 +17,17 @@ interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
-/** state 里携带的数据：o=站点 origin，s=site_id，n=一次性随机数，t=签发时间戳（毫秒）。 */
+/**
+ * state 里携带的数据：o=站点 origin，s=site_id，n=一次性随机数，t=签发时间戳（毫秒），
+ * r=授权后要回到的站内路径（整页跳转模式），m=回传方式（popup 用 postMessage，redirect 用 URL 片段）。
+ */
 interface StatePayload {
   o: string;
   s: string;
   n: string;
   t: number;
+  r?: string;
+  m?: string;
 }
 
 /** token 交换结果：成功带 token，失败只带一句安全的中文原因。 */
@@ -137,12 +142,20 @@ function isAllowedOrigin(origin: string, allowed: string[]): boolean {
 }
 
 /** 构造 state：base64url(payload) + '.' + HMAC-SHA256 签名。 */
-async function createState(secret: string, origin: string, siteId: string): Promise<string> {
+async function createState(
+  secret: string,
+  origin: string,
+  siteId: string,
+  returnPath?: string,
+  mode: 'popup' | 'redirect' = 'popup',
+): Promise<string> {
   const payload: StatePayload = {
     o: origin,
     s: siteId,
     n: randomToken(12),
     t: Date.now(),
+    ...(returnPath ? { r: returnPath } : {}),
+    m: mode,
   };
   const body = bytesToBase64Url(encoder.encode(JSON.stringify(payload)));
   const signature = await sign(secret, body);
@@ -210,6 +223,17 @@ function sanitizeScope(value: string | null): string {
   if (!trimmed) return DEFAULT_SCOPE;
   return /^[A-Za-z0-9_,]{1,200}$/.test(trimmed) ? trimmed : DEFAULT_SCOPE;
 }
+/**
+ * 整页跳转模式下的回跳路径：只接受站内绝对路径（`/` 开头且不是 `//`），
+ * 防止把 token 重定向到第三方站点。
+ */
+function sanitizeReturnPath(value: string | null): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
+  const withoutHash = trimmed.split('#')[0] ?? '/';
+  return withoutHash.slice(0, 300) || '/';
+}
+
 
 /**
  * 决定授权完成后 token 回传给哪个 origin：
@@ -337,7 +361,10 @@ async function handleAuth(request: Request, env: Env, url: URL): Promise<Respons
   if (origin === null) return textResponse('no allowed origin configured', 400);
 
   const siteId = (url.searchParams.get('site_id') ?? '').trim() || 'ship';
-  const state = await createState(secret, origin, siteId);
+  // mode=redirect 时（弹窗被拦截的移动端浏览器），授权完成后 302 回站内并把 token 放在 URL 片段里。
+  const mode = url.searchParams.get('mode') === 'redirect' ? 'redirect' : 'popup';
+  const returnPath = sanitizeReturnPath(url.searchParams.get('return_to'));
+  const state = await createState(secret, origin, siteId, mode === 'redirect' ? returnPath : undefined, mode);
   const redirectUri = `${new URL(request.url).origin}/callback`;
 
   const authorize = new URL(GITHUB_AUTHORIZE_URL);
@@ -436,6 +463,17 @@ async function handleCallback(request: Request, env: Env, url: URL): Promise<Res
   }
 
   const message = successMessage(result.token);
+  if (payload.m === 'redirect') {
+    const location = `${payload.o}${payload.r ?? '/'}#gh_token=${encodeURIComponent(result.token)}`;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: location,
+        'Cache-Control': 'no-store',
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+  }
   return new Response(htmlDocument(targetOrigin, message, '授权完成，可以关闭此窗口。'), {
     status: 200,
     headers: HTML_HEADERS,

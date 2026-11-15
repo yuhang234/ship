@@ -115,7 +115,7 @@ const oauthReady = OAUTH_BASE.trim().length > 0;
 </StudioLayout>
 
 <script>
-  import { clearSession, getSession, isOAuthConfigured, signIn } from '../../lib/auth';
+  import { clearSession, getSession, isOAuthConfigured, restoreSession, signIn } from '../../lib/auth';
   import { isoStamp, toParts } from '../../lib/date';
   import { type Draft, deleteDraft, getDraft, listDrafts, saveDraft } from '../../lib/idb';
   import {
@@ -897,6 +897,7 @@ const oauthReady = OAUTH_BASE.trim().length > 0;
 
     // ---------- 首次加载 ----------
     void (async () => {
+      session = await restoreSession();
       renderSession();
       autoGrow();
       const stored = await getDraft('thought:new');

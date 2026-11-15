@@ -140,13 +140,25 @@ describe('dist/search.json', () => {
     expect(loadIndex().length).toBeGreaterThan(0);
   });
 
-  it('包含 3 篇文章与 6 条想法', () => {
+  it('索引条数与内容目录一致', () => {
     const docs = loadIndex();
-    expect(docs.filter((doc) => doc.kind === 'writing')).toHaveLength(3);
-    expect(docs.filter((doc) => doc.kind === 'thought')).toHaveLength(6);
-    expect(docs).toHaveLength(9);
-  });
 
+    // 想法：目录里有几个 .md 就有几条（内容会持续增加，不能写死数字）。
+    const thoughtFiles = readdirSync(resolve(ROOT, 'src/content/thoughts')).filter((file) => file.endsWith('.md'));
+    const thoughtDocs = docs.filter((doc) => doc.kind === 'thought');
+    expect(thoughtDocs).toHaveLength(thoughtFiles.length);
+
+    // 文章：只统计 `published: true` 的源文件。
+    const writingDir = resolve(ROOT, 'src/content/writing');
+    const publishedFiles = readdirSync(writingDir)
+      .filter((file) => file.endsWith('.md'))
+      .filter((file) => /^published:\s*true/m.test(readFileSync(resolve(writingDir, file), 'utf8')));
+    const writingDocs = docs.filter((doc) => doc.kind === 'writing');
+    expect(writingDocs).toHaveLength(publishedFiles.length);
+
+    expect(docs).toHaveLength(thoughtFiles.length + publishedFiles.length);
+    expect(writingDocs.length).toBeGreaterThan(0);
+  });
   it('不含未发布文章', () => {
     expect(readDist('search.json')).not.toContain('"published":false');
   });
